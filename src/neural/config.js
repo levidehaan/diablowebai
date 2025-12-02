@@ -222,7 +222,7 @@ const NeuralConfig = {
     logLevel: 'info', // 'debug', 'info', 'warn', 'error'
     visualizeAI: false,
     logAPIRequests: true,
-    mockAPIResponses: true, // Use mock responses when no API key
+    mockAPIResponses: false, // Set to true to force mock responses even with API key
   },
 };
 

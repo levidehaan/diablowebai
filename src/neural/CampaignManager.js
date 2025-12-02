@@ -131,10 +131,10 @@ export function CampaignManager({ onCampaignReady, onClose }) {
   const [view, setView] = useState('list'); // 'list', 'create', 'generating'
   const [savedCampaigns, setSavedCampaigns] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('CLASSIC');
-  const [customOptions, setCustomOptions] = useState({
+  const [customOptions, setCustomOptions] = useState(() => ({
     name: '',
     customTheme: '',
-  });
+  }));
   const [generationProgress, setGenerationProgress] = useState({ stage: '', progress: 0 });
   const [error, setError] = useState(null);
   const [storageStats, setStorageStats] = useState(null);
@@ -394,8 +394,8 @@ export function CampaignManager({ onCampaignReady, onClose }) {
                     id="campaignName"
                     type="text"
                     placeholder="Leave blank for auto-generated name"
-                    value={customOptions.name}
-                    onChange={(e) => setCustomOptions(prev => ({ ...prev, name: e.target.value }))}
+                    value={customOptions?.name || ''}
+                    onChange={(e) => setCustomOptions(prev => ({ ...(prev || {}), name: e.target.value }))}
                   />
                 </div>
 
@@ -405,8 +405,8 @@ export function CampaignManager({ onCampaignReady, onClose }) {
                     id="customTheme"
                     type="text"
                     placeholder="e.g., 'Ancient Egyptian tombs' or 'Frozen nordic dungeons'"
-                    value={customOptions.customTheme}
-                    onChange={(e) => setCustomOptions(prev => ({ ...prev, customTheme: e.target.value }))}
+                    value={customOptions?.customTheme || ''}
+                    onChange={(e) => setCustomOptions(prev => ({ ...(prev || {}), customTheme: e.target.value }))}
                   />
                   <small>Add a custom theme to influence the AI generation</small>
                 </div>

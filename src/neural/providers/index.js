@@ -503,6 +503,13 @@ class ProviderManager {
   }
 
   /**
+   * Get the current provider instance
+   */
+  getProvider() {
+    return this.provider;
+  }
+
+  /**
    * Get current configuration
    */
   getConfig() {
