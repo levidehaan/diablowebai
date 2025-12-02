@@ -1,0 +1,89 @@
+# Docker Compose for Diablo Web AI Development
+#
+# Usage:
+#   Development:  docker-compose up dev
+#   Testing:      docker-compose run test
+#   Production:   docker-compose up prod
+
+version: '3.8'
+
+services:
+  # Development server with hot reload
+  dev:
+    build:
+      context: .
+      target: emscripten/emsdk:3.1.47
+      dockerfile: Dockerfile
+    volumes:
+      - .:/src
+      - node_modules:/src/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_AI_ENDPOINT=${AI_ENDPOINT:-}
+      - REACT_APP_AI_API_KEY=${AI_API_KEY:-}
+      - REACT_APP_AI_MODEL=${AI_MODEL:-gpt-4}
+    command: npm start
+
+  # Test runner
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/src
+      - node_modules:/src/node_modules
+      - /dev/shm:/dev/shm  # Required for Puppeteer
+    environment:
+      - NODE_ENV=test
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    command: npm test -- --coverage
+
+  # Integration tests with Puppeteer
+  integration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/src
+      - node_modules:/src/node_modules
+      - /dev/shm:/dev/shm
+    environment:
+      - NODE_ENV=test
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    command: npm run test:integration
+
+  # Production build
+  build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./build:/src/build
+    command: npm run build
+
+  # Production server
+  prod:
+    build:
+      context: .
+      target: production
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # WASM rebuild (if source available)
+  wasm:
+    build:
+      context: .
+      target: wasm-builder
+      dockerfile: Dockerfile
+    volumes:
+      - ./devilution-src:/devilution
+      - ./src/api:/output
+
+volumes:
+  node_modules:
