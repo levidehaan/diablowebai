@@ -48,6 +48,8 @@ jobs:
           NODE_ENV: production
           # Disable CI=true which treats warnings as errors
           CI: false
+          # Fix for Node.js 17+ with older webpack (OpenSSL 3.0 compatibility)
+          NODE_OPTIONS: --openssl-legacy-provider
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
