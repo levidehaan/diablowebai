@@ -347,6 +347,62 @@ npm run build
 
 ---
 
+## Deploying to GitHub Pages
+
+This project can be deployed to GitHub Pages for free hosting. There are two methods:
+
+### Method 1: Automatic Deployment (GitHub Actions)
+
+The repository includes a GitHub Actions workflow that automatically deploys when you push to `main`.
+
+1. **Fork or clone this repository**
+
+2. **Enable GitHub Pages in your repository settings:**
+   - Go to Settings > Pages
+   - Under "Build and deployment", select "GitHub Actions"
+
+3. **Push to main branch:**
+   ```bash
+   git push origin main
+   ```
+
+   The workflow will automatically build and deploy your site.
+
+4. **Access your site at:**
+   ```
+   https://[your-username].github.io/[repo-name]/
+   ```
+
+### Method 2: Manual Deployment (gh-pages branch)
+
+If you prefer manual control over deployments:
+
+1. **Install gh-pages:**
+   ```bash
+   npm install
+   ```
+
+2. **Build and deploy:**
+   ```bash
+   npm run deploy:manual
+   ```
+
+   This builds the project and pushes to the `gh-pages` branch.
+
+3. **Configure GitHub Pages:**
+   - Go to Settings > Pages
+   - Under "Build and deployment", select "Deploy from a branch"
+   - Choose `gh-pages` branch and `/ (root)` folder
+
+### Important Notes
+
+- **All features work on GitHub Pages** - The Neural Augmentation system uses client-side storage (IndexedDB) and API calls are made directly from the browser
+- **API Keys** - When you configure an AI provider, your API key is stored in localStorage on your browser only
+- **Game Files** - The shareware `spawn.mpq` is included; for the full game, users need to provide their own `DIABDAT.MPQ`
+- **Custom Domain** - You can configure a custom domain in Settings > Pages
+
+---
+
 ## Original Project
 
 This project is based on:
@@ -423,10 +479,9 @@ Based on the original Diablo decompilation project. See [devilution](https://git
 - [x] Multi-provider AI support
 - [x] Browser-side image resizing
 - [x] IndexedDB persistence
-
-### In Progress
-- [ ] Full game loop integration with campaigns
-- [ ] Custom character sprite generation
+- [x] Full game loop integration with campaigns
+- [x] Custom character sprite generation UI
+- [x] GitHub Pages deployment support
 
 ### Planned
 - [ ] Procedural item generation with AI descriptions

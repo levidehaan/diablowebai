@@ -552,3 +552,55 @@ body, #root, .App {
   background: rgba(0, 0, 0, 0.9);
   z-index: 999;
 }
+
+// Neural Augmentation Section styles
+.neural-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #444;
+
+  &__title {
+    font-size: 12px;
+    color: #d4a85c;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .startButton {
+    position: relative;
+
+    &.campaign-btn {
+      background: linear-gradient(180deg, #2a1a15 0%, #1a100a 100%);
+      border: 1px solid #8b4513;
+      color: #ffd700;
+
+      &:hover {
+        background: linear-gradient(180deg, #3a2a20 0%, #2a1a15 100%);
+        border-color: #a0522d;
+        box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+      }
+    }
+
+    &.character-btn {
+      background: linear-gradient(180deg, #1a152a 0%, #100a1a 100%);
+      border: 1px solid #4a3a8b;
+      color: #a08cff;
+
+      &:hover {
+        background: linear-gradient(180deg, #2a2040 0%, #1a152a 100%);
+        border-color: #6a5aab;
+        box-shadow: 0 0 10px rgba(160, 140, 255, 0.2);
+      }
+    }
+
+    .mode-badge {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 8px;
+    }
+  }
+}

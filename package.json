@@ -1,6 +1,7 @@
 {
-  "name": "diabloweb",
-  "version": "1.0.39",
+  "name": "diabloweb-ai",
+  "version": "2.0.0",
+  "description": "AI-augmented Diablo Web with procedural content generation",
   "private": true,
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^1.2.21",
@@ -73,7 +74,9 @@
     "test:neural": "jest --config jest.neural.config.js",
     "test:integration": "jest --config jest.integration.config.js --runInBand",
     "test:all": "npm run test:neural && npm run test:integration",
+    "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
+    "deploy:manual": "npm run build && gh-pages -d build -b gh-pages",
     "docker:build": "docker build -t diabloweb-neural .",
     "docker:dev": "docker-compose up dev",
     "docker:test": "docker-compose run test"
@@ -144,7 +147,7 @@
       "@babel/preset-react"
     ]
   },
-  "homepage": "https://d07riv.github.io/diabloweb",
+  "homepage": ".",
   "devDependencies": {
     "@babel/core": "^7.14.6",
     "@babel/preset-env": "^7.14.7",
