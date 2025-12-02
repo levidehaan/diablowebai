@@ -14,8 +14,10 @@ import { SpawnSizes } from './api/load_spawn';
 import CompressMpq from './mpqcmp';
 
 // Neural Augmentation System
-import { AIConfigPanel, loadSavedConfig, needsConfiguration, providerManager } from './neural';
+import { AIConfigPanel, loadSavedConfig, needsConfiguration, providerManager, CampaignManager, CharacterCreator } from './neural';
 import './neural/AIConfigPanel.scss';
+import './neural/CampaignManager.scss';
+import './neural/CharacterCreator.scss';
 
 import Peer from 'peerjs';
 
@@ -110,6 +112,12 @@ class App extends React.Component {
     showAIConfig: false,
     aiConfigured: false,
     aiConfig: null,
+    // Campaign and Character UI state
+    showCampaignManager: false,
+    showCharacterCreator: false,
+    activeCampaign: null,
+    activeWorld: null,
+    campaignProgress: null,
   };
   cursorPos = {x: 0, y: 0};
 
@@ -211,6 +219,40 @@ class App extends React.Component {
 
   openAISettings = () => {
     this.setState({ showAIConfig: true });
+  }
+
+  // Campaign Manager handlers
+  openCampaignManager = () => {
+    this.setState({ showCampaignManager: true });
+  }
+
+  closeCampaignManager = () => {
+    this.setState({ showCampaignManager: false });
+  }
+
+  handleCampaignReady = ({ campaign, world, progress }) => {
+    this.setState({
+      showCampaignManager: false,
+      activeCampaign: campaign,
+      activeWorld: world,
+      campaignProgress: progress,
+    });
+    console.log('[App] Campaign ready:', campaign.name);
+    // Could auto-start the game with the campaign here
+  }
+
+  // Character Creator handlers
+  openCharacterCreator = () => {
+    this.setState({ showCharacterCreator: true });
+  }
+
+  closeCharacterCreator = () => {
+    this.setState({ showCharacterCreator: false });
+  }
+
+  handleCharacterSaved = (characterData) => {
+    console.log('[App] Character saved:', characterData.name);
+    // Character is saved to IndexedDB, can be used in campaigns
   }
 
   onDrop = e => {
@@ -751,7 +793,7 @@ class App extends React.Component {
   }
 
   renderUi() {
-    const {started, loading, error, progress, has_spawn, save_names, show_saves, compress, showAIConfig, aiConfig} = this.state;
+    const {started, loading, error, progress, has_spawn, save_names, show_saves, compress, showAIConfig, aiConfig, showCampaignManager, showCharacterCreator, activeCampaign} = this.state;
 
     // Show AI Configuration Panel
     if (showAIConfig) {
@@ -762,6 +804,33 @@ class App extends React.Component {
             onComplete={this.handleAIConfigComplete}
             onSkip={this.handleAIConfigSkip}
             initialConfig={aiConfig}
+          />
+        </>
+      );
+    }
+
+    // Show Campaign Manager
+    if (showCampaignManager) {
+      return (
+        <>
+          <div className="ai-config-overlay" />
+          <CampaignManager
+            onCampaignReady={this.handleCampaignReady}
+            onClose={this.closeCampaignManager}
+          />
+        </>
+      );
+    }
+
+    // Show Character Creator
+    if (showCharacterCreator) {
+      return (
+        <>
+          <div className="ai-config-overlay" />
+          <CharacterCreator
+            onSave={this.handleCharacterSaved}
+            onClose={this.closeCharacterCreator}
+            campaignId={activeCampaign?.id}
           />
         </>
       );
@@ -830,10 +899,22 @@ class App extends React.Component {
           </form>
           <div className="startButton" onClick={() => this.start()}>Play Shareware</div>
           {!!save_names && <div className="startButton" onClick={this.showSaves}>Manage Saves</div>}
-          <div className="startButton ai-settings" onClick={this.openAISettings}>
-            <FontAwesomeIcon icon={faCog} /> AI Settings
-            {this.state.aiConfig?.mockMode && <span className="mode-badge">Mock Mode</span>}
-            {this.state.aiConfig?.provider && <span className="mode-badge">{this.state.aiConfig.provider}</span>}
+
+          {/* Neural Augmentation Features */}
+          <div className="neural-section">
+            <div className="neural-section__title">Neural Augmentation</div>
+            <div className="startButton campaign-btn" onClick={this.openCampaignManager}>
+              AI Campaigns
+              {activeCampaign && <span className="mode-badge">{activeCampaign.name}</span>}
+            </div>
+            <div className="startButton character-btn" onClick={this.openCharacterCreator}>
+              Character Creator
+            </div>
+            <div className="startButton ai-settings" onClick={this.openAISettings}>
+              <FontAwesomeIcon icon={faCog} /> AI Settings
+              {this.state.aiConfig?.mockMode && <span className="mode-badge">Mock Mode</span>}
+              {this.state.aiConfig?.provider && <span className="mode-badge">{this.state.aiConfig.provider}</span>}
+            </div>
           </div>
         </div>
       );

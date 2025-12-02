@@ -38,6 +38,9 @@ export { AIConfigPanel, AISettingsButton, loadSavedConfig, saveConfig, needsConf
 // Export Campaign Manager UI components
 export { CampaignManager, SaveGameButton, QuickExportButton } from './CampaignManager';
 
+// Export Character Creator UI components
+export { CharacterCreator } from './CharacterCreator';
+
 // Export utilities from each module
 export * from './NeuralInterop';
 export * from './LevelGenerator';
