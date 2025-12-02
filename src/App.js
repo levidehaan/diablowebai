@@ -792,10 +792,10 @@ class App extends React.Component {
     }
   }
 
-  renderUi() {
-    const {started, loading, error, progress, has_spawn, save_names, show_saves, compress, showAIConfig, aiConfig, showCampaignManager, showCharacterCreator, activeCampaign} = this.state;
+  // Render AI modals separately - these need to be outside BodyV for pointer-events to work
+  renderAIModals() {
+    const {showAIConfig, aiConfig, showCampaignManager, showCharacterCreator, activeCampaign} = this.state;
 
-    // Show AI Configuration Panel
     if (showAIConfig) {
       return (
         <>
@@ -809,7 +809,6 @@ class App extends React.Component {
       );
     }
 
-    // Show Campaign Manager
     if (showCampaignManager) {
       return (
         <>
@@ -822,7 +821,6 @@ class App extends React.Component {
       );
     }
 
-    // Show Character Creator
     if (showCharacterCreator) {
       return (
         <>
@@ -834,6 +832,17 @@ class App extends React.Component {
           />
         </>
       );
+    }
+
+    return null;
+  }
+
+  renderUi() {
+    const {started, loading, error, progress, has_spawn, save_names, show_saves, compress, showAIConfig, showCampaignManager, showCharacterCreator, activeCampaign} = this.state;
+
+    // AI modals are rendered separately via renderAIModals() outside of BodyV
+    if (showAIConfig || showCampaignManager || showCharacterCreator) {
+      return null;
     }
 
     if (show_saves && typeof save_names === "object") {
@@ -958,6 +967,8 @@ class App extends React.Component {
         <div className="BodyV">
           {this.renderUi()}
         </div>
+        {/* AI modals rendered outside BodyV so pointer-events work */}
+        {this.renderAIModals()}
       </div>
     );
   }
