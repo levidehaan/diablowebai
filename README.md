@@ -24,17 +24,32 @@ NPCs now respond contextually based on your progress:
 - **Griswold** offers advice based on your class
 - Story context is maintained across sessions
 
-### Adaptive Monster AI
-Monsters now fight tactically instead of blindly charging:
-- **Squad Formations**: Monsters coordinate in LINE, WEDGE, FLANK, or SURROUND patterns
-- **Boss Personalities**: The Butcher relentlessly pursues; Skeleton King summons minions
-- **Utility-Based Decisions**: Wounded monsters may retreat; ranged units maintain distance
+### AI-Generated Campaigns
+Create entirely new Diablo experiences:
+- **Campaign Templates**: Classic Descent, Under Siege, Spreading Corruption, Sacred Relics
+- **Procedural Storylines**: AI-generated narrative arcs with progression gates
+- **World Building**: Multiple dungeon levels, overworld maps, and boss lairs
+- **Progression System**: Kill bosses to unlock new areas
 
-### Dynamic Quest Generation
-AI-generated side quests based on your current situation:
-- Kill quests with tracked progress
-- Exploration objectives
-- Boss challenges with appropriate rewards
+### Custom Character Generation
+AI can generate new monsters and characters:
+- **Sprite Generation**: Pass requirements (size, description) to generate new sprites
+- **Browser-side Resizing**: Automatic conversion to game-compatible formats
+- **CL2/CEL Conversion**: AI images converted to Diablo's 256-color palette
+
+### Smart Enemy Placement
+Instead of real-time AI control (too many API calls), the system:
+- **Places enemies** at design time based on difficulty
+- **Controls spawn locations** and enemy types per area
+- **Creates boss encounters** with appropriate minions
+- **Gates progression** via required boss kills
+
+### Save, Export & Import
+Full client-side storage with IndexedDB:
+- **Save Games**: Persist campaigns and progress locally
+- **Export Campaigns**: Share AI-generated campaigns as JSON files
+- **Import Campaigns**: Load campaigns created on other machines
+- **Cross-Browser**: Works on any modern browser
 
 ---
 
@@ -97,19 +112,23 @@ REACT_APP_LOCAL_ENDPOINT=http://localhost:11434
 
 ```
 src/neural/
-├── config.js           # Multi-provider configuration
-├── index.js            # Main entry point
-├── NeuralInterop.js    # WASM <-> JS bridge
-├── LevelGenerator.js   # AI dungeon generation
-├── NarrativeEngine.js  # Dynamic dialogue & quests
-├── CommanderAI.js      # Tactical NPC behavior
-├── AssetPipeline.js    # AI asset generation
-└── providers/          # AI provider implementations
-    ├── index.js
-    ├── openrouter.js
-    ├── openai.js
-    ├── gemini.js
-    └── local.js
+├── config.js             # Multi-provider configuration
+├── index.js              # Main entry point
+├── NeuralInterop.js      # WASM <-> JS bridge
+├── LevelGenerator.js     # AI dungeon generation
+├── NarrativeEngine.js    # Dynamic dialogue & quests
+├── CommanderAI.js        # Tactical NPC behavior (reference)
+├── EnemyPlacement.js     # Design-time enemy spawning
+├── CampaignGenerator.js  # AI storyline & mission creation
+├── WorldBuilder.js       # Level & area construction
+├── GameStorage.js        # IndexedDB persistence & export
+├── AssetPipeline.js      # AI asset generation + resizing
+├── AIConfigPanel.js      # Provider configuration UI
+├── CampaignManager.js    # Campaign management UI
+├── AIConfigPanel.scss    # Provider UI styles
+├── CampaignManager.scss  # Campaign UI styles
+└── providers/            # AI provider implementations
+    └── index.js          # OpenRouter, OpenAI, Gemini, Anthropic, Local
 ```
 
 ### Module Descriptions
@@ -119,8 +138,12 @@ src/neural/
 | **NeuralInterop** | Bridges JavaScript AI systems with the WASM game engine |
 | **LevelGenerator** | Generates 40x40 dungeon grids with A* pathfinding validation |
 | **NarrativeEngine** | Maintains story context and generates contextual dialogue |
-| **CommanderAI** | Coordinates monster squads with tactical formations |
-| **AssetPipeline** | Converts AI-generated images to Diablo's CL2 format |
+| **EnemyPlacement** | Places enemies at design time based on difficulty |
+| **CampaignGenerator** | Creates storylines, missions, and progression gates |
+| **WorldBuilder** | Constructs worlds with levels, areas, and transitions |
+| **GameStorage** | IndexedDB storage with export/import functionality |
+| **AssetPipeline** | Converts AI images to CL2 format with browser resizing |
+| **CampaignManager** | React UI for creating/loading/exporting campaigns |
 
 ---
 
@@ -211,18 +234,79 @@ const dialogue = await narrativeEngine.generateDialogue('OGDEN');
 // "Thank the Light! You've slain that butcher! The town sleeps easier..."
 ```
 
-### Commander AI Formations
+### Campaign Generation
 
+```javascript
+// Generate a new campaign
+const campaign = await neuralAugmentation.generateCampaign('CLASSIC', {
+  customTheme: 'Ancient Egyptian tombs',
+});
+
+// Campaign structure
+{
+  id: 'campaign_123',
+  name: 'The Darkness Returns',
+  acts: [
+    {
+      name: 'Act 1: Desecrated Halls',
+      theme: 'Cathedral',
+      levels: [...],
+      boss: { name: 'The Defiler', type: 'SKELETON_KING' },
+      unlockCondition: null,
+    },
+    // ... more acts
+  ],
+  quests: [...],
+}
 ```
-LINE Formation        SURROUND Formation
-  M M M                    M
-    ↓                    M P M
-    P                      M
 
-FLANK Formation       WEDGE Formation
- M     M                  M
-   ↘ ↙                   M M
-    P                    M P M
+**Campaign Templates:**
+- `CLASSIC`: Traditional 4-act dungeon descent
+- `SIEGE`: Defend Tristram from waves (3 acts)
+- `CORRUPTION`: Time-limited cleansing missions
+- `QUEST`: Collect sacred relics across 5 acts
+
+### Enemy Placement
+
+```javascript
+// Generate enemy placements for an area
+const placements = await enemyPlacement.generatePlacements({
+  name: 'Cathedral Level 2',
+  difficulty: 3,
+  spawnPoints: [
+    { x: 10, y: 15, template: 'PATROL' },
+    { x: 25, y: 20, template: 'AMBUSH' },
+  ],
+  bossArea: {
+    x: 20, y: 5,
+    bossType: 'SKELETON_KING',
+    progressionGate: 'cathedral_level_3',
+  },
+});
+
+// Returns array of enemy spawns
+[
+  { x: 10, y: 15, enemyType: 'SKELETON', difficulty: 2 },
+  { x: 20, y: 5, enemyType: 'SKELETON_KING', isBoss: true, progressionGate: '...' },
+  // ...
+]
+```
+
+### Save/Export/Import
+
+```javascript
+// Save current game
+await GameStorage.saveGameState(campaign, world, progress);
+
+// List saved campaigns
+const saved = await GameStorage.getSavedCampaigns();
+
+// Export to file
+await GameStorage.exporter.exportToFile(campaignId);
+// Downloads: diablo-campaign-the-darkness-returns-1699999999.json
+
+// Import from file
+const campaign = await GameStorage.importer.importFromFile(file);
 ```
 
 ---
@@ -329,8 +413,25 @@ Based on the original Diablo decompilation project. See [devilution](https://git
 
 ## Roadmap
 
+### Completed
+- [x] AI-driven procedural level generation
+- [x] Dynamic NPC dialogue with context
+- [x] Campaign generation system
+- [x] World building with progression gates
+- [x] Smart enemy placement (design-time)
+- [x] Save/Export/Import campaigns
+- [x] Multi-provider AI support
+- [x] Browser-side image resizing
+- [x] IndexedDB persistence
+
+### In Progress
+- [ ] Full game loop integration with campaigns
+- [ ] Custom character sprite generation
+
+### Planned
 - [ ] Procedural item generation with AI descriptions
 - [ ] AI-generated monster variants
-- [ ] Persistent world state across sessions
-- [ ] Multiplayer with synchronized AI state
+- [ ] Overworld exploration areas
+- [ ] Multiplayer with campaign sharing
 - [ ] Voice synthesis for NPC dialogue
+- [ ] Campaign rating and sharing platform
