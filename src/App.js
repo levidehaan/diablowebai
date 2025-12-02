@@ -3,7 +3,7 @@ import './App.scss';
 import classNames from 'classnames';
 import ReactGA from 'react-ga';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faDownload } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faDownload, faCog } from '@fortawesome/free-solid-svg-icons';
 import getPlayerName from './api/savefile';
 
 import { mapStackTrace } from 'sourcemapped-stacktrace';
@@ -12,6 +12,10 @@ import create_fs from './fs';
 import load_game from './api/loader';
 import { SpawnSizes } from './api/load_spawn';
 import CompressMpq from './mpqcmp';
+
+// Neural Augmentation System
+import { AIConfigPanel, loadSavedConfig, needsConfiguration, providerManager } from './neural';
+import './neural/AIConfigPanel.scss';
 
 import Peer from 'peerjs';
 
@@ -97,7 +101,16 @@ const Link = ({children, ...props}) => <a target="_blank" rel="noopener noreferr
 
 class App extends React.Component {
   files = new Map();
-  state = {started: false, loading: false, dropping: 0, has_spawn: false};
+  state = {
+    started: false,
+    loading: false,
+    dropping: 0,
+    has_spawn: false,
+    // AI Configuration state
+    showAIConfig: false,
+    aiConfigured: false,
+    aiConfig: null,
+  };
   cursorPos = {x: 0, y: 0};
 
   touchControls = false;
@@ -140,6 +153,64 @@ class App extends React.Component {
         this.setState({save_names: true});
       }
     });
+
+    // Load AI configuration
+    this.initializeAIConfig();
+  }
+
+  async initializeAIConfig() {
+    const savedConfig = loadSavedConfig();
+
+    if (savedConfig && savedConfig.provider) {
+      // Initialize provider manager with saved config
+      try {
+        await providerManager.initialize(savedConfig);
+        this.setState({
+          aiConfigured: true,
+          aiConfig: savedConfig,
+        });
+        console.log('[App] AI provider initialized:', savedConfig.provider);
+      } catch (error) {
+        console.warn('[App] Failed to initialize AI provider:', error);
+        // Show config panel if initialization fails
+        this.setState({ showAIConfig: true });
+      }
+    } else if (needsConfiguration()) {
+      // Show config panel on first launch
+      this.setState({ showAIConfig: true });
+    } else {
+      // Mock mode
+      this.setState({ aiConfigured: true, aiConfig: { mockMode: true } });
+    }
+  }
+
+  handleAIConfigComplete = async (config) => {
+    try {
+      if (config.provider) {
+        await providerManager.initialize(config);
+      }
+      this.setState({
+        showAIConfig: false,
+        aiConfigured: true,
+        aiConfig: config,
+      });
+      console.log('[App] AI configuration saved:', config.provider || 'mock mode');
+    } catch (error) {
+      console.error('[App] Failed to save AI config:', error);
+    }
+  }
+
+  handleAIConfigSkip = () => {
+    this.setState({
+      showAIConfig: false,
+      aiConfigured: true,
+      aiConfig: { mockMode: true },
+    });
+    console.log('[App] AI configuration skipped, using mock mode');
+  }
+
+  openAISettings = () => {
+    this.setState({ showAIConfig: true });
   }
 
   onDrop = e => {
@@ -680,7 +751,22 @@ class App extends React.Component {
   }
 
   renderUi() {
-    const {started, loading, error, progress, has_spawn, save_names, show_saves, compress} = this.state;
+    const {started, loading, error, progress, has_spawn, save_names, show_saves, compress, showAIConfig, aiConfig} = this.state;
+
+    // Show AI Configuration Panel
+    if (showAIConfig) {
+      return (
+        <>
+          <div className="ai-config-overlay" />
+          <AIConfigPanel
+            onComplete={this.handleAIConfigComplete}
+            onSkip={this.handleAIConfigSkip}
+            initialConfig={aiConfig}
+          />
+        </>
+      );
+    }
+
     if (show_saves && typeof save_names === "object") {
       const plrClass = ["Warrior", "Rogue", "Sorcerer"];
       return (
@@ -744,15 +830,26 @@ class App extends React.Component {
           </form>
           <div className="startButton" onClick={() => this.start()}>Play Shareware</div>
           {!!save_names && <div className="startButton" onClick={this.showSaves}>Manage Saves</div>}
+          <div className="startButton ai-settings" onClick={this.openAISettings}>
+            <FontAwesomeIcon icon={faCog} /> AI Settings
+            {this.state.aiConfig?.mockMode && <span className="mode-badge">Mock Mode</span>}
+            {this.state.aiConfig?.provider && <span className="mode-badge">{this.state.aiConfig.provider}</span>}
+          </div>
         </div>
       );
     }
   }
 
   render() {
-    const {started, error, dropping} = this.state;
+    const {started, error, dropping, showAIConfig} = this.state;
     return (
       <div className={classNames("App", {touch: this.touchControls, started, dropping, keyboard: !!this.showKeyboard})} ref={this.setElement}>
+        {/* AI Settings button - visible when game is running */}
+        {started && !error && !showAIConfig && (
+          <button className="ai-settings-btn" onClick={this.openAISettings} title="AI Settings">
+            <FontAwesomeIcon icon={faCog} />
+          </button>
+        )}
         <div className="touch-ui touch-mods">
           <div className={classNames("touch-button", "touch-button-0", {active: this.touchMods[0]})} ref={this.setTouch0}/>
           <div className={classNames("touch-button", "touch-button-1", {active: this.touchMods[1]})} ref={this.setTouch1}/>
