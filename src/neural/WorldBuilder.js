@@ -760,8 +760,6 @@ export {
   WorldMap,
   Area,
   MockWorldGenerator,
-  AREA_TYPES,
-  TRANSITION_TYPES,
   THEME_CONFIGS,
 };
 

@@ -683,9 +683,6 @@ const campaignGenerator = new CampaignGenerator();
 export {
   CampaignGenerator,
   MockCampaignGenerator,
-  CAMPAIGN_TEMPLATES,
-  OBJECTIVE_TYPES,
-  GATE_TYPES,
   seededRandom,
 };
 
