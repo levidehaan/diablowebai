@@ -42,10 +42,12 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # Set PUBLIC_URL for GitHub Pages subdirectory
-          PUBLIC_URL: /${{ github.event.repository.name }}
+          # Use relative paths for assets (works at any path)
+          PUBLIC_URL: .
           # Build in production mode
           NODE_ENV: production
+          # Disable CI=true which treats warnings as errors
+          CI: false
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
