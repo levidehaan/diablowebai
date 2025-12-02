@@ -485,7 +485,6 @@ const enemyPlacementSystem = new EnemyPlacementSystem();
 
 export {
   EnemyPlacementSystem,
-  ENEMY_TYPES,
   SPAWN_TEMPLATES,
   MockPlacementGenerator,
   getEnemiesForDifficulty,
