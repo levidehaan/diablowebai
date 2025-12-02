@@ -70,7 +70,13 @@
     "start": "node scripts/start.js",
     "build": "node scripts/build.js",
     "test": "node scripts/test.js",
-    "deploy": "gh-pages -d build"
+    "test:neural": "jest --config jest.neural.config.js",
+    "test:integration": "jest --config jest.integration.config.js --runInBand",
+    "test:all": "npm run test:neural && npm run test:integration",
+    "deploy": "gh-pages -d build",
+    "docker:build": "docker build -t diabloweb-neural .",
+    "docker:dev": "docker-compose up dev",
+    "docker:test": "docker-compose run test"
   },
   "eslintConfig": {
     "extends": "react-app"
@@ -146,6 +152,7 @@
     "exports-loader": "^0.7.0",
     "gh-pages": "^2.0.1",
     "node-sass": "^4.14.1",
+    "puppeteer": "^21.0.0",
     "worker-loader": "^2.0.0"
   }
 }
