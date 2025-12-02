@@ -11,6 +11,7 @@ import levelGenerator from './LevelGenerator';
 import narrativeEngine from './NarrativeEngine';
 import commanderAI from './CommanderAI';
 import assetPipeline from './AssetPipeline';
+import { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
 
 // Re-export individual modules
 export { default as NeuralConfig } from './config';
@@ -19,6 +20,12 @@ export { default as levelGenerator } from './LevelGenerator';
 export { default as narrativeEngine } from './NarrativeEngine';
 export { default as commanderAI } from './CommanderAI';
 export { default as assetPipeline } from './AssetPipeline';
+
+// Export provider system
+export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
+
+// Export UI components
+export { AIConfigPanel, AISettingsButton, loadSavedConfig, saveConfig, needsConfiguration } from './AIConfigPanel';
 
 // Export utilities from each module
 export * from './NeuralInterop';
