@@ -11,6 +11,10 @@ import levelGenerator from './LevelGenerator';
 import narrativeEngine from './NarrativeEngine';
 import commanderAI from './CommanderAI';
 import assetPipeline from './AssetPipeline';
+import enemyPlacement from './EnemyPlacement';
+import campaignGenerator from './CampaignGenerator';
+import worldBuilder from './WorldBuilder';
+import GameStorage from './GameStorage';
 import { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
 
 // Re-export individual modules
@@ -20,12 +24,19 @@ export { default as levelGenerator } from './LevelGenerator';
 export { default as narrativeEngine } from './NarrativeEngine';
 export { default as commanderAI } from './CommanderAI';
 export { default as assetPipeline } from './AssetPipeline';
+export { default as enemyPlacement } from './EnemyPlacement';
+export { default as campaignGenerator } from './CampaignGenerator';
+export { default as worldBuilder } from './WorldBuilder';
+export { default as GameStorage } from './GameStorage';
 
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
 
-// Export UI components
+// Export AI Config UI components
 export { AIConfigPanel, AISettingsButton, loadSavedConfig, saveConfig, needsConfiguration } from './AIConfigPanel';
+
+// Export Campaign Manager UI components
+export { CampaignManager, SaveGameButton, QuickExportButton } from './CampaignManager';
 
 // Export utilities from each module
 export * from './NeuralInterop';
@@ -33,6 +44,10 @@ export * from './LevelGenerator';
 export * from './NarrativeEngine';
 export * from './CommanderAI';
 export * from './AssetPipeline';
+export * from './EnemyPlacement';
+export * from './CampaignGenerator';
+export * from './WorldBuilder';
+export * from './GameStorage';
 
 /**
  * Neural Augmentation System status
@@ -200,6 +215,115 @@ class NeuralAugmentation {
   }
 
   /**
+   * Generate a new campaign
+   */
+  async generateCampaign(template = 'CLASSIC', options = {}) {
+    return campaignGenerator.generateCampaign(template, options);
+  }
+
+  /**
+   * Get current campaign
+   */
+  getCampaign() {
+    return campaignGenerator.getCampaign();
+  }
+
+  /**
+   * Get campaign progress
+   */
+  getCampaignProgress() {
+    return campaignGenerator.getProgress();
+  }
+
+  /**
+   * Build world from campaign
+   */
+  async buildWorld(campaign) {
+    return worldBuilder.buildWorld(campaign);
+  }
+
+  /**
+   * Get current world
+   */
+  getWorld() {
+    return worldBuilder.getWorld();
+  }
+
+  /**
+   * Get enemy placements for an area
+   */
+  async getEnemyPlacements(areaConfig, grid) {
+    return enemyPlacement.generatePlacements(areaConfig, grid);
+  }
+
+  /**
+   * Save current game state to storage
+   */
+  async saveGame() {
+    const campaign = campaignGenerator.getCampaign();
+    if (!campaign) {
+      throw new Error('No campaign to save');
+    }
+
+    const world = worldBuilder.getWorld();
+    const progress = campaignGenerator.getProgress();
+
+    await GameStorage.saveGameState(
+      campaign,
+      world?.export?.() || world,
+      progress
+    );
+
+    return campaign.id;
+  }
+
+  /**
+   * Load game state from storage
+   */
+  async loadGame(campaignId) {
+    const gameState = await GameStorage.loadGameState(campaignId);
+
+    if (!gameState) {
+      throw new Error('Campaign not found');
+    }
+
+    // Restore campaign
+    campaignGenerator.import({
+      campaign: gameState.campaign,
+      progress: gameState.progress,
+      version: 1,
+    });
+
+    // Restore world
+    if (gameState.world) {
+      worldBuilder.import(gameState.world);
+    }
+
+    return gameState;
+  }
+
+  /**
+   * Get list of saved games
+   */
+  async getSavedGames() {
+    return GameStorage.getSavedCampaigns();
+  }
+
+  /**
+   * Export campaign to file
+   */
+  async exportCampaign(campaignId) {
+    return GameStorage.exporter.exportToFile(campaignId);
+  }
+
+  /**
+   * Import campaign from file
+   */
+  async importCampaign(file) {
+    return GameStorage.importer.importFromFile(file);
+  }
+
+  /**
    * Event system
    */
   on(event, callback) {
@@ -280,6 +404,9 @@ class NeuralAugmentation {
     levelGenerator.clearCache();
     narrativeEngine.clearOverrides();
     assetPipeline.clearCache();
+    enemyPlacement.clearCache();
+    campaignGenerator.clear();
+    worldBuilder.clear();
     neuralInterop.destroy();
 
     this.status = NeuralStatus.UNINITIALIZED;
