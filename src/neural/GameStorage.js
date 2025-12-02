@@ -408,10 +408,12 @@ const GameExporter = {
     const data = await this.exportCampaign(campaignId);
     const jsonString = JSON.stringify(data);
 
-    // Use CompressionStream if available
+    // Use CompressionStream if available (modern browser API)
+    // eslint-disable-next-line no-undef
     if (typeof CompressionStream !== 'undefined') {
       const encoder = new TextEncoder();
       const stream = new Blob([encoder.encode(jsonString)]).stream();
+      // eslint-disable-next-line no-undef
       const compressedStream = stream.pipeThrough(new CompressionStream('gzip'));
       const compressedBlob = await new Response(compressedStream).blob();
 
@@ -506,8 +508,9 @@ const GameImporter = {
 
           // Check if compressed
           if (file.name.endsWith('.gz')) {
-            // Decompress
+            // Decompress using modern browser API
             const blob = new Blob([event.target.result]);
+            // eslint-disable-next-line no-undef
             const stream = blob.stream().pipeThrough(new DecompressionStream('gzip'));
             const decompressedBlob = await new Response(stream).blob();
             jsonString = await decompressedBlob.text();

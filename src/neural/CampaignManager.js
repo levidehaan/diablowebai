@@ -268,7 +268,9 @@ export function CampaignManager({ onCampaignReady, onClose }) {
   };
 
   const handleImportClick = () => {
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   };
 
   const handleFileImport = async (event) => {
