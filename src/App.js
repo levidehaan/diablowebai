@@ -15,9 +15,11 @@ import CompressMpq from './mpqcmp';
 
 // Neural Augmentation System
 import { AIConfigPanel, loadSavedConfig, needsConfiguration, providerManager, CampaignManager, CharacterCreator } from './neural';
+import { AIGameSession, AIGameOverlay } from './neural/AIGameSession';
 import './neural/AIConfigPanel.scss';
 import './neural/CampaignManager.scss';
 import './neural/CharacterCreator.scss';
+import './neural/AIGameSession.scss';
 
 import Peer from 'peerjs';
 
@@ -118,6 +120,9 @@ class App extends React.Component {
     activeCampaign: null,
     activeWorld: null,
     campaignProgress: null,
+    // AI Game Session state
+    aiGameSession: null,
+    playingAICampaign: false,
   };
   cursorPos = {x: 0, y: 0};
 
@@ -238,7 +243,39 @@ class App extends React.Component {
       campaignProgress: progress,
     });
     console.log('[App] Campaign ready:', campaign.name);
-    // Could auto-start the game with the campaign here
+  }
+
+  // Start playing an AI campaign
+  startAICampaign = () => {
+    const { activeCampaign, activeWorld, campaignProgress } = this.state;
+    if (!activeCampaign) {
+      console.warn('[App] No campaign selected');
+      return;
+    }
+
+    // Create AI game session
+    const session = new AIGameSession(activeCampaign, activeWorld, campaignProgress);
+    session.start();
+
+    this.setState({
+      aiGameSession: session,
+      playingAICampaign: true,
+    });
+
+    // Start the base game (shareware mode)
+    this.start();
+  }
+
+  // Stop AI campaign
+  stopAICampaign = async () => {
+    const { aiGameSession } = this.state;
+    if (aiGameSession) {
+      await aiGameSession.stop();
+    }
+    this.setState({
+      aiGameSession: null,
+      playingAICampaign: false,
+    });
   }
 
   // Character Creator handlers
@@ -912,9 +949,18 @@ class App extends React.Component {
           {/* Neural Augmentation Features */}
           <div className="neural-section">
             <div className="neural-section__title">Neural Augmentation</div>
+
+            {/* Play AI Campaign button - shown when campaign is ready */}
+            {activeCampaign && (
+              <div className="startButton play-ai-btn" onClick={this.startAICampaign}>
+                Play AI Campaign
+                <span className="campaign-name-badge">{activeCampaign.name}</span>
+              </div>
+            )}
+
             <div className="startButton campaign-btn" onClick={this.openCampaignManager}>
-              AI Campaigns
-              {activeCampaign && <span className="mode-badge">{activeCampaign.name}</span>}
+              {activeCampaign ? 'Change Campaign' : 'AI Campaigns'}
+              {activeCampaign && <span className="mode-badge">Ready</span>}
             </div>
             <div className="startButton character-btn" onClick={this.openCharacterCreator}>
               Character Creator
@@ -969,6 +1015,11 @@ class App extends React.Component {
         </div>
         {/* AI modals rendered outside BodyV so pointer-events work */}
         {this.renderAIModals()}
+
+        {/* AI Game Session overlay - shown when playing AI campaign */}
+        {this.state.playingAICampaign && this.state.aiGameSession && (
+          <AIGameOverlay session={this.state.aiGameSession} />
+        )}
       </div>
     );
   }
