@@ -61,10 +61,10 @@ spawn_modded.mpq (downloadable)
 - [x] Tile Mapper (TileMapper.js)
 - [x] Monster Mapper (MonsterMapper.js)
 - [x] CEL/CL2 Encoder (AssetPipeline.js)
-- [ ] DUN Parser/Writer
-- [ ] MPQ Writer
-- [ ] AI Mod Tools
-- [ ] Mod Editor UI
+- [x] DUN Parser/Writer (DUNParser.js)
+- [x] MPQ Writer (MPQWriter.js)
+- [x] AI Mod Tools (ModTools.js)
+- [x] Mod Editor UI (ModEditor.js)
 
 **Continue reading MPQ_MODDING_PLAN.md for full implementation details.**
 

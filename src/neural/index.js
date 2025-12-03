@@ -33,6 +33,8 @@ export { default as TileMapper } from './TileMapper';
 export { default as MonsterMapper } from './MonsterMapper';
 export { default as DUNParser } from './DUNParser';
 export { MOD_TOOLS, ModToolExecutor } from './ModTools';
+export { ModEditor, ModEditorButton } from './ModEditor';
+export { MPQWriter } from './MPQWriter';
 
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
