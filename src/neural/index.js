@@ -35,6 +35,8 @@ export { default as DUNParser } from './DUNParser';
 export { MOD_TOOLS, ModToolExecutor } from './ModTools';
 export { ModEditor, ModEditorButton } from './ModEditor';
 export { MPQWriter } from './MPQWriter';
+export { default as LevelValidator, validateLevel, checkPath, analyzeAreas, VALIDATION_STATUS } from './LevelValidator';
+export { default as CampaignConverter, convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
 
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
@@ -63,6 +65,8 @@ export * from './TileMapper';
 export * from './MonsterMapper';
 export * from './DUNParser';
 export * from './ModTools';
+export * from './LevelValidator';
+export * from './CampaignConverter';
 
 /**
  * Neural Augmentation System status

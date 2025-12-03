@@ -14,6 +14,8 @@
 import DUNParser from './DUNParser';
 import TileMapper from './TileMapper';
 import MonsterMapper from './MonsterMapper';
+import LevelValidator, { validateLevel, checkPath, analyzeAreas } from './LevelValidator';
+import CampaignConverter, { convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
 
 // Tool definitions for AI
 export const MOD_TOOLS = {
@@ -505,6 +507,428 @@ export const MOD_TOOLS = {
         theme: params.theme,
         tiles: tiles,
       };
+    },
+  },
+
+  /**
+   * Validate a level structure
+   */
+  validateLevel: {
+    name: 'validateLevel',
+    description: 'Validate a level structure for errors (missing stairs, blocked paths, invalid tiles)',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file to validate',
+        required: true,
+      },
+      theme: {
+        type: 'string',
+        description: 'Level theme (cathedral, catacombs, caves, hell)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { mpqReader, modifiedFiles } = context;
+      const theme = params.theme || 'cathedral';
+
+      try {
+        let dunData;
+
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else if (mpqReader) {
+          const buffer = mpqReader.read(params.path);
+          if (!buffer) {
+            return { success: false, error: `File not found: ${params.path}` };
+          }
+          dunData = DUNParser.parse(buffer);
+        } else {
+          return { success: false, error: 'No MPQ loaded or file not modified' };
+        }
+
+        const validation = validateLevel(dunData, theme);
+        const report = getValidationReport(dunData, theme);
+
+        return {
+          success: true,
+          path: params.path,
+          valid: validation.valid,
+          status: validation.status,
+          errors: validation.errors,
+          warnings: validation.warnings,
+          fixes: validation.fixes,
+          stats: validation.stats,
+          report,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Check path between two points
+   */
+  checkPath: {
+    name: 'checkPath',
+    description: 'Check if a path exists between two points in a level',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file',
+        required: true,
+      },
+      from: {
+        type: 'string',
+        description: 'Start point: "stairs_up", "entry", or {x, y}',
+        required: true,
+      },
+      to: {
+        type: 'string',
+        description: 'End point: "stairs_down", "exit", or {x, y}',
+        required: true,
+      },
+      theme: {
+        type: 'string',
+        description: 'Level theme',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { mpqReader, modifiedFiles } = context;
+      const theme = params.theme || 'cathedral';
+
+      try {
+        let dunData;
+
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else if (mpqReader) {
+          const buffer = mpqReader.read(params.path);
+          if (!buffer) {
+            return { success: false, error: `File not found: ${params.path}` };
+          }
+          dunData = DUNParser.parse(buffer);
+        } else {
+          return { success: false, error: 'No MPQ loaded or file not modified' };
+        }
+
+        const result = checkPath(dunData, params.from, params.to, theme);
+
+        return {
+          success: true,
+          path: params.path,
+          reachable: result.reachable,
+          pathLength: result.length,
+          from: result.from,
+          to: result.to,
+          error: result.error,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Analyze level areas for unreachable sections
+   */
+  analyzeAreas: {
+    name: 'analyzeAreas',
+    description: 'Find all connected areas in a level and identify unreachable sections',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file',
+        required: true,
+      },
+      theme: {
+        type: 'string',
+        description: 'Level theme',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { mpqReader, modifiedFiles } = context;
+      const theme = params.theme || 'cathedral';
+
+      try {
+        let dunData;
+
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else if (mpqReader) {
+          const buffer = mpqReader.read(params.path);
+          if (!buffer) {
+            return { success: false, error: `File not found: ${params.path}` };
+          }
+          dunData = DUNParser.parse(buffer);
+        } else {
+          return { success: false, error: 'No MPQ loaded or file not modified' };
+        }
+
+        const areas = analyzeAreas(dunData, theme);
+
+        return {
+          success: true,
+          path: params.path,
+          totalAreas: areas.totalAreas,
+          mainAreaIndex: areas.mainAreaIndex,
+          unreachableCount: areas.unreachableCount,
+          areas: areas.areas,
+          hasIsolatedAreas: areas.totalAreas > 1,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Convert campaign JSON to DUN files
+   */
+  convertCampaign: {
+    name: 'convertCampaign',
+    description: 'Convert AI campaign JSON to playable DUN level files',
+    parameters: {
+      campaign: {
+        type: 'object',
+        description: 'Campaign JSON with acts and levels',
+        required: true,
+      },
+      autoFix: {
+        type: 'boolean',
+        description: 'Automatically fix critical issues like missing stairs',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      try {
+        const result = convertCampaign(params.campaign, {
+          autoFix: params.autoFix !== false,
+        });
+
+        // Store all generated files
+        for (const [path, buffer] of result.files) {
+          // Parse buffer back to dunData for storage
+          const dunData = DUNParser.parse(buffer);
+          modifiedFiles.set(path, {
+            type: 'dun',
+            data: dunData,
+            modified: Date.now(),
+            isNew: true,
+          });
+        }
+
+        return {
+          success: result.success,
+          campaign: result.campaign,
+          levelsGenerated: result.levels.length,
+          levels: result.levels,
+          errors: result.errors,
+          warnings: result.warnings,
+          files: Array.from(result.files.keys()),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Convert single level from campaign format
+   */
+  convertLevelFromGrid: {
+    name: 'convertLevelFromGrid',
+    description: 'Convert a binary grid (0=floor, 1=wall) to a DUN level file',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path where to save the DUN file',
+        required: true,
+      },
+      grid: {
+        type: 'array',
+        description: '2D array of 0 (floor) and 1 (wall)',
+        required: true,
+      },
+      spawns: {
+        type: 'array',
+        description: 'Array of {x, y, type} monster spawns',
+        required: false,
+      },
+      stairsUp: {
+        type: 'object',
+        description: '{x, y} position for stairs up',
+        required: false,
+      },
+      stairsDown: {
+        type: 'object',
+        description: '{x, y} position for stairs down',
+        required: false,
+      },
+      theme: {
+        type: 'string',
+        description: 'Level theme',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, dungeonLevel } = context;
+
+      try {
+        const level = {
+          grid: params.grid,
+          spawns: params.spawns || [],
+          stairsUp: params.stairsUp,
+          stairsDown: params.stairsDown,
+        };
+
+        const result = convertLevel(level, {
+          theme: params.theme || 'cathedral',
+          levelIndex: dungeonLevel || 1,
+          path: params.path,
+          autoFix: true,
+        });
+
+        // Store generated file
+        modifiedFiles.set(result.path, {
+          type: 'dun',
+          data: result.dunData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: result.path,
+          valid: result.validation.valid,
+          errors: result.validation.errors,
+          warnings: result.validation.warnings,
+          stats: result.validation.stats,
+          preview: result.preview,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get validation report for a level
+   */
+  getValidationReport: {
+    name: 'getValidationReport',
+    description: 'Get a human-readable validation report for a level',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file',
+        required: true,
+      },
+      theme: {
+        type: 'string',
+        description: 'Level theme',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { mpqReader, modifiedFiles } = context;
+      const theme = params.theme || 'cathedral';
+
+      try {
+        let dunData;
+
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else if (mpqReader) {
+          const buffer = mpqReader.read(params.path);
+          if (!buffer) {
+            return { success: false, error: `File not found: ${params.path}` };
+          }
+          dunData = DUNParser.parse(buffer);
+        } else {
+          return { success: false, error: 'No MPQ loaded or file not modified' };
+        }
+
+        const report = getValidationReport(dunData, theme);
+
+        return {
+          success: true,
+          path: params.path,
+          report,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Build and export modified MPQ
+   */
+  buildMod: {
+    name: 'buildMod',
+    description: 'Build modified MPQ from all changes and prepare for export',
+    parameters: {
+      dryRun: {
+        type: 'boolean',
+        description: 'If true, only validate without building',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      try {
+        if (modifiedFiles.size === 0) {
+          return { success: false, error: 'No modifications to build' };
+        }
+
+        const files = [];
+        const validations = [];
+
+        for (const [path, info] of modifiedFiles.entries()) {
+          let buffer;
+          if (info.type === 'dun') {
+            buffer = DUNParser.write(info.data);
+
+            // Validate each level
+            const validation = validateLevel(info.data);
+            validations.push({
+              path,
+              valid: validation.valid,
+              errors: validation.errors,
+              warnings: validation.warnings,
+            });
+          } else {
+            buffer = info.data;
+          }
+
+          files.push({
+            path,
+            size: buffer.length,
+            isNew: info.isNew || false,
+          });
+        }
+
+        const allValid = validations.every(v => v.valid);
+
+        return {
+          success: true,
+          dryRun: params.dryRun || false,
+          fileCount: files.length,
+          files,
+          validations,
+          allValid,
+          readyToExport: !params.dryRun && allValid,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
     },
   },
 };

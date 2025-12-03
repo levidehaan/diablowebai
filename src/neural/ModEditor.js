@@ -64,6 +64,54 @@ export class ModEditor extends Component {
   }
 
   /**
+   * Handle close button
+   */
+  handleClose = () => {
+    if (this.props.onClose) {
+      this.props.onClose();
+    }
+  }
+
+  /**
+   * Start game with current modifications
+   */
+  handleStartModded = async () => {
+    const modifiedFiles = this.executor.getModifiedFiles();
+
+    if (modifiedFiles.length === 0) {
+      alert('No modifications to play');
+      return;
+    }
+
+    const opId = this.addOperation('startModded', { files: modifiedFiles.length }, 'running');
+    this.setState({ status: 'working' });
+
+    try {
+      // Create MPQ writer with original buffer
+      const writer = new MPQWriter(this.originalMpqBuffer);
+
+      // Add all modified files
+      for (const file of modifiedFiles) {
+        writer.setFile(file.path, file.buffer);
+      }
+
+      // Build the modified MPQ
+      const modifiedMpq = writer.build();
+
+      this.updateOperation(opId, 'success');
+
+      // Call parent callback to start modded game
+      if (this.props.onStartModded) {
+        await this.props.onStartModded(modifiedMpq);
+      }
+    } catch (error) {
+      this.updateOperation(opId, 'error', error.message);
+      this.setState({ status: 'ready', error: error.message });
+      console.error('[ModEditor] Failed to start modded game:', error);
+    }
+  }
+
+  /**
    * Check if spawn.mpq is already in the filesystem
    */
   async checkExistingMPQ() {
@@ -349,11 +397,24 @@ export class ModEditor extends Component {
               Generate Test Level
             </button>
             <button
+              onClick={this.handleStartModded}
+              disabled={modifiedFiles.length === 0}
+              className="btn btn-play"
+            >
+              Play Modded ({modifiedFiles.length})
+            </button>
+            <button
               onClick={this.exportMod}
               disabled={modifiedFiles.length === 0}
               className="btn btn-success"
             >
-              Export ({modifiedFiles.length})
+              Export
+            </button>
+            <button
+              onClick={this.handleClose}
+              className="btn btn-close"
+            >
+              Close
             </button>
           </div>
         </div>
