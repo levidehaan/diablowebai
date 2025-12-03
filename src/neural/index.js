@@ -31,6 +31,8 @@ export { default as GameStorage } from './GameStorage';
 export { default as WASMBridge } from './WASMBridge';
 export { default as TileMapper } from './TileMapper';
 export { default as MonsterMapper } from './MonsterMapper';
+export { default as DUNParser } from './DUNParser';
+export { MOD_TOOLS, ModToolExecutor } from './ModTools';
 
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
@@ -57,6 +59,8 @@ export * from './GameStorage';
 export * from './WASMBridge';
 export * from './TileMapper';
 export * from './MonsterMapper';
+export * from './DUNParser';
+export * from './ModTools';
 
 /**
  * Neural Augmentation System status
