@@ -29,6 +29,8 @@ export { default as campaignGenerator } from './CampaignGenerator';
 export { default as worldBuilder } from './WorldBuilder';
 export { default as GameStorage } from './GameStorage';
 export { default as WASMBridge } from './WASMBridge';
+export { default as TileMapper } from './TileMapper';
+export { default as MonsterMapper } from './MonsterMapper';
 
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
@@ -53,6 +55,8 @@ export * from './CampaignGenerator';
 export * from './WorldBuilder';
 export * from './GameStorage';
 export * from './WASMBridge';
+export * from './TileMapper';
+export * from './MonsterMapper';
 
 /**
  * Neural Augmentation System status
