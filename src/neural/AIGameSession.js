@@ -10,8 +10,8 @@
  */
 
 import React from 'react';
-import { DialogueGenerator } from './DialogueGenerator';
-import { GameStorage } from './GameStorage';
+import narrativeEngine from './NarrativeEngine';
+import GameStorage from './GameStorage';
 import './AIGameSession.scss';
 
 // NPC ID mappings (based on game character positions/interactions)
@@ -42,7 +42,7 @@ export class AIGameSession {
     this.campaign = campaign;
     this.world = world;
     this.progress = progress || this.createInitialProgress();
-    this.dialogueGenerator = new DialogueGenerator();
+    this.narrativeEngine = narrativeEngine;
     this.eventListeners = new Map();
     this.isActive = false;
     this.currentLevel = 0;
@@ -235,7 +235,7 @@ export class AIGameSession {
     };
 
     try {
-      const dialogue = await this.dialogueGenerator.generate(npcKey, context);
+      const dialogue = await this.narrativeEngine.generateDialogue(npcKey, context);
       this.showDialogue(npcKey, dialogue);
     } catch (error) {
       console.warn('[AIGameSession] Failed to generate dialogue:', error);
@@ -487,7 +487,9 @@ export class AIGameOverlay extends React.Component {
   };
 
   dismissDialogue = () => {
-    this.props.session?.dismissDialogue();
+    if (this.props.session) {
+      this.props.session.dismissDialogue();
+    }
   };
 
   render() {
