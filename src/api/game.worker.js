@@ -406,8 +406,39 @@ async function init_game(mpq, spawn, offscreen) {
   //wasm._SNet_InitWebsocket();
   wasm._DApi_Init(Math.floor(performance.now()), offscreen ? 1 : 0, parseInt(vers[1]), parseInt(vers[2]), parseInt(vers[3]));
 
+  // Discovery: Log all WASM exports for AI integration research
+  if (typeof console !== 'undefined') {
+    const wasmExports = Object.keys(wasm).filter(k => k.startsWith('_'));
+    console.log('[WASM Discovery] Total exports:', wasmExports.length);
+
+    // Group by category
+    const categories = {
+      DApi: wasmExports.filter(k => k.includes('DApi')),
+      Level: wasmExports.filter(k => k.toLowerCase().includes('level') || k.toLowerCase().includes('dung')),
+      Monster: wasmExports.filter(k => k.toLowerCase().includes('monster') || k.toLowerCase().includes('mon_')),
+      Object: wasmExports.filter(k => k.toLowerCase().includes('object') || k.toLowerCase().includes('obj_')),
+      Player: wasmExports.filter(k => k.toLowerCase().includes('player') || k.toLowerCase().includes('plr_')),
+      Item: wasmExports.filter(k => k.toLowerCase().includes('item')),
+      Quest: wasmExports.filter(k => k.toLowerCase().includes('quest')),
+      Memory: wasmExports.filter(k => k.includes('malloc') || k.includes('free') || k.includes('HEAP')),
+    };
+
+    Object.entries(categories).forEach(([cat, funcs]) => {
+      if (funcs.length > 0) {
+        console.log(`[WASM] ${cat}:`, funcs.slice(0, 20).join(', ') + (funcs.length > 20 ? `... (+${funcs.length - 20} more)` : ''));
+      }
+    });
+
+    // Also expose for debugging
+    worker.postMessage({
+      action: 'wasm_discovery',
+      exports: wasmExports,
+      categories: categories
+    });
+  }
+
   setInterval(() => {
-    call_api("DApi_Render", Math.floor(performance.now()));  
+    call_api("DApi_Render", Math.floor(performance.now()));
   }, 50);
 }
 
