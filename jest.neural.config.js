@@ -5,7 +5,10 @@
 module.exports = {
   displayName: 'neural',
   testEnvironment: 'node',
-  testMatch: ['<rootDir>/tests/neural.test.js'],
+  testMatch: [
+    '<rootDir>/tests/neural.test.js',
+    '<rootDir>/tests/campaign.test.js',
+  ],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   transform: {
     '^.+\\.js$': 'babel-jest',

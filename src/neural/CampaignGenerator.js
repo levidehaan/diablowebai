@@ -494,16 +494,28 @@ Respond with a JSON object containing:
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const campaign = JSON.parse(jsonMatch[0]);
-        campaign.seed = seed;
-        campaign.template = template;
-        campaign.createdAt = new Date().toISOString();
-        return this.validateCampaign(campaign);
+        let jsonStr = jsonMatch[0];
+
+        // Try to repair common JSON issues from AI responses
+        jsonStr = this.repairJSON(jsonStr);
+
+        try {
+          const campaign = JSON.parse(jsonStr);
+          campaign.seed = seed;
+          campaign.template = template;
+          campaign.createdAt = new Date().toISOString();
+          return this.validateCampaign(campaign);
+        } catch (parseError) {
+          console.error('[CampaignGenerator] JSON parse error:', parseError.message);
+          console.error('[CampaignGenerator] Problematic JSON (first 500 chars):', jsonStr.substring(0, 500));
+          // Fall through to mock generation
+        }
       }
     } catch (error) {
       console.error('[CampaignGenerator] AI generation failed:', error);
     }
 
+    console.log('[CampaignGenerator] Falling back to mock generation');
     return MockCampaignGenerator.generateCampaign(template, seed);
   }
 
@@ -547,6 +559,62 @@ Respond with a JSON object containing:
     });
 
     return campaign;
+  }
+
+  /**
+   * Attempt to repair common JSON issues from AI responses
+   */
+  repairJSON(jsonStr) {
+    let repaired = jsonStr;
+
+    try {
+      // Remove trailing commas before ] or }
+      repaired = repaired.replace(/,(\s*[\]}])/g, '$1');
+
+      // Fix unescaped quotes in strings (common AI mistake)
+      // This is a simple heuristic - replace sequences like ": "text "word" more"
+      // Be careful not to break valid JSON
+
+      // Remove any text after the final closing brace
+      const lastBrace = repaired.lastIndexOf('}');
+      if (lastBrace !== -1 && lastBrace < repaired.length - 1) {
+        repaired = repaired.substring(0, lastBrace + 1);
+      }
+
+      // Try to balance braces if unbalanced
+      const openBraces = (repaired.match(/\{/g) || []).length;
+      const closeBraces = (repaired.match(/\}/g) || []).length;
+      if (openBraces > closeBraces) {
+        repaired += '}'.repeat(openBraces - closeBraces);
+      }
+
+      // Balance brackets
+      const openBrackets = (repaired.match(/\[/g) || []).length;
+      const closeBrackets = (repaired.match(/\]/g) || []).length;
+      if (openBrackets > closeBrackets) {
+        // Find where to insert closing brackets
+        const insertPos = repaired.lastIndexOf('}');
+        if (insertPos > 0) {
+          repaired = repaired.substring(0, insertPos) +
+            ']'.repeat(openBrackets - closeBrackets) +
+            repaired.substring(insertPos);
+        }
+      }
+
+      // Replace common problematic patterns
+      repaired = repaired
+        // Fix "null or {" patterns (should just be null or the object)
+        .replace(/"unlockCondition":\s*null\s+or\s+\{[^}]*\}/g, '"unlockCondition": null')
+        // Fix ellipsis in strings
+        .replace(/\.{3,}/g, '...')
+        // Remove control characters
+        .replace(/[\x00-\x1F\x7F]/g, ' ');
+
+      return repaired;
+    } catch (e) {
+      console.warn('[CampaignGenerator] JSON repair failed:', e);
+      return jsonStr;
+    }
   }
 
   /**

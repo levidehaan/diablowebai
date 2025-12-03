@@ -492,6 +492,31 @@ class LevelGenerator {
   }
 
   /**
+   * Generate a level with options object (wrapper for generate)
+   * @param {Object} options - { theme, difficulty, seed }
+   * @returns {Promise<Object>} Level data with grid
+   */
+  async generateLevel(options = {}) {
+    const { theme = 'cathedral', difficulty = 1, seed = null } = options;
+
+    // Map theme to level type
+    const themeToType = {
+      cathedral: 0,
+      catacombs: 1,
+      caves: 2,
+      hell: 3,
+    };
+
+    const levelType = themeToType[theme.toLowerCase()] ?? 0;
+
+    // Use difficulty as depth
+    const result = await this.generate(levelType, difficulty, seed);
+
+    // Return just the grid if that's all we got, or the full result
+    return result?.grid || result;
+  }
+
+  /**
    * Build AI prompt for level generation
    */
   buildPrompt(theme, depth) {
