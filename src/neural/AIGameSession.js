@@ -82,6 +82,17 @@ export class AIGameSession {
     this.isActive = true;
     this.startTime = Date.now();
 
+    // Ensure progress has required arrays
+    if (!this.progress.activeQuests) {
+      this.progress.activeQuests = [];
+    }
+    if (!this.progress.completedQuests) {
+      this.progress.completedQuests = [];
+    }
+    if (!this.progress.bossKills) {
+      this.progress.bossKills = [];
+    }
+
     // Show initial quest
     if (this.progress.activeQuests.length > 0) {
       const quest = this.campaign.quests?.find(q => q.id === this.progress.activeQuests[0]);
