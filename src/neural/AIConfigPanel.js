@@ -58,7 +58,10 @@ export function AIConfigPanel({ onComplete, onSkip, initialConfig = null }) {
   const [localEndpoint, setLocalEndpoint] = useState(initialConfig?.baseUrl || 'http://localhost:11434');
   const [models, setModels] = useState([]);
   const [imageModels, setImageModels] = useState([]);
+  const [customImageModel, setCustomImageModel] = useState('');
+  const [useCustomImageModel, setUseCustomImageModel] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingImageModels, setLoadingImageModels] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [error, setError] = useState(null);
@@ -93,26 +96,41 @@ export function AIConfigPanel({ onComplete, onSkip, initialConfig = null }) {
     // For OpenRouter, fetch dynamic model list
     if (provider === PROVIDERS.OPENROUTER && apiKey) {
       setLoading(true);
+      setLoadingImageModels(true);
       try {
-        const tempProvider = providerManager.provider ||
-          (await providerManager.initialize({ provider, apiKey }), providerManager.provider);
+        // Initialize provider if needed
+        let tempProvider = providerManager.provider;
+        if (!tempProvider || providerManager.getConfig()?.provider !== provider) {
+          await providerManager.initialize({ provider, apiKey });
+          tempProvider = providerManager.provider;
+        }
 
         if (tempProvider) {
+          // Fetch text models
           const fetchedModels = await tempProvider.getModels();
           setModels(fetchedModels);
 
-          // Filter for image models
-          const imgModels = fetchedModels.filter(m =>
-            m.id.includes('dall-e') ||
-            m.id.includes('stable-diffusion') ||
-            m.id.includes('imagen')
-          );
-          setImageModels(imgModels);
+          // Fetch image models using the dedicated method
+          try {
+            const fetchedImageModels = await tempProvider.getImageModels();
+            if (fetchedImageModels && fetchedImageModels.length > 0) {
+              setImageModels(fetchedImageModels);
+            } else {
+              // Fallback to known image models
+              setImageModels(config.knownImageModels || []);
+            }
+          } catch (imgErr) {
+            console.warn('[AIConfig] Failed to fetch image models, using fallback:', imgErr);
+            setImageModels(config.knownImageModels || []);
+          }
         }
       } catch (err) {
         console.error('[AIConfig] Failed to load models:', err);
+        // Use fallback models on error
+        setImageModels(config.knownImageModels || []);
       } finally {
         setLoading(false);
+        setLoadingImageModels(false);
       }
     }
 
@@ -176,12 +194,17 @@ export function AIConfigPanel({ onComplete, onSkip, initialConfig = null }) {
 
   // Save and complete
   const handleSave = () => {
+    // Use custom image model if specified, otherwise use selected
+    const finalImageModel = useCustomImageModel && customImageModel
+      ? customImageModel
+      : imageModel;
+
     const config = {
       provider,
       apiKey: provider !== PROVIDERS.LOCAL ? apiKey : undefined,
       baseUrl: provider === PROVIDERS.LOCAL ? localEndpoint : undefined,
       model,
-      imageModel: features.assetGeneration ? imageModel : undefined,
+      imageModel: features.assetGeneration ? finalImageModel : undefined,
       features,
       savedAt: Date.now(),
     };
@@ -324,17 +347,55 @@ export function AIConfigPanel({ onComplete, onSkip, initialConfig = null }) {
 
           {providerConfig?.supportsImageGen && features.assetGeneration && (
             <div className="ai-config-section">
-              <label className="ai-config-label">Image Model (Optional)</label>
-              <select
-                className="ai-config-select"
-                value={imageModel}
-                onChange={(e) => setImageModel(e.target.value)}
-              >
-                <option value="">None - use default assets</option>
-                {imageModels.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
+              <label className="ai-config-label">
+                Image Model
+                {loadingImageModels && <span className="loading-indicator"> Loading...</span>}
+              </label>
+
+              {!useCustomImageModel ? (
+                <>
+                  <select
+                    className="ai-config-select"
+                    value={imageModel}
+                    onChange={(e) => setImageModel(e.target.value)}
+                    disabled={loadingImageModels}
+                  >
+                    <option value="">Select an image model...</option>
+                    {imageModels.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                  {imageModels.length === 0 && !loadingImageModels && (
+                    <p className="ai-config-hint">
+                      No image models found. Try entering the API key first or use custom input.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <input
+                  type="text"
+                  className="ai-config-input"
+                  value={customImageModel}
+                  onChange={(e) => setCustomImageModel(e.target.value)}
+                  placeholder="e.g., google/gemini-2.5-flash-image-preview"
+                />
+              )}
+
+              <label className="feature-toggle" style={{ marginTop: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={useCustomImageModel}
+                  onChange={(e) => setUseCustomImageModel(e.target.checked)}
+                />
+                <span>Enter custom model ID</span>
+              </label>
+
+              {provider === PROVIDERS.OPENROUTER && (
+                <p className="ai-config-hint">
+                  Popular image models: <code>google/gemini-2.5-flash-image-preview</code>,{' '}
+                  <code>black-forest-labs/flux-1.1-pro</code>
+                </p>
+              )}
             </div>
           )}
 

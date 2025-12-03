@@ -395,7 +395,10 @@ export function CampaignManager({ onCampaignReady, onClose }) {
                     type="text"
                     placeholder="Leave blank for auto-generated name"
                     value={customOptions?.name || ''}
-                    onChange={(e) => setCustomOptions(prev => ({ ...(prev || {}), name: e.target.value }))}
+                    onChange={(e) => {
+                      const value = e?.target?.value ?? '';
+                      setCustomOptions(prev => ({ ...(prev || {}), name: value }));
+                    }}
                   />
                 </div>
 
@@ -406,7 +409,10 @@ export function CampaignManager({ onCampaignReady, onClose }) {
                     type="text"
                     placeholder="e.g., 'Ancient Egyptian tombs' or 'Frozen nordic dungeons'"
                     value={customOptions?.customTheme || ''}
-                    onChange={(e) => setCustomOptions(prev => ({ ...(prev || {}), customTheme: e.target.value }))}
+                    onChange={(e) => {
+                      const value = e?.target?.value ?? '';
+                      setCustomOptions(prev => ({ ...(prev || {}), customTheme: value }));
+                    }}
                   />
                   <small>Add a custom theme to influence the AI generation</small>
                 </div>

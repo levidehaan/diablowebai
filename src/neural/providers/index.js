@@ -25,7 +25,15 @@ export const PROVIDER_CONFIGS = {
     supportsImageGen: true,
     keyPrefix: 'sk-or-',
     defaultModel: 'openai/gpt-4-turbo',
-    defaultImageModel: 'openai/dall-e-3',
+    defaultImageModel: 'google/gemini-2.5-flash-image-preview',
+    // Known image models for fallback if API doesn't return them
+    knownImageModels: [
+      { id: 'google/gemini-2.5-flash-image-preview', name: 'Gemini 2.5 Flash Image (Nano Banana)' },
+      { id: 'black-forest-labs/flux-1.1-pro', name: 'FLUX 1.1 Pro' },
+      { id: 'black-forest-labs/flux-pro', name: 'FLUX Pro' },
+      { id: 'black-forest-labs/flux-dev', name: 'FLUX Dev' },
+      { id: 'black-forest-labs/flux-schnell', name: 'FLUX Schnell' },
+    ],
   },
   [PROVIDERS.OPENAI]: {
     name: 'OpenAI',
@@ -168,6 +176,11 @@ class BaseProvider {
  * OpenRouter Provider
  */
 class OpenRouterProvider extends BaseProvider {
+  constructor(config) {
+    super(config);
+    this.imageModelsCache = null;
+  }
+
   async generateText(prompt, options = {}) {
     const response = await this.request(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -192,23 +205,45 @@ class OpenRouterProvider extends BaseProvider {
   }
 
   async generateImage(prompt, options = {}) {
-    // OpenRouter routes to various image models
-    const response = await this.request(`${this.baseUrl}/images/generations`, {
+    // OpenRouter uses chat/completions with modalities for image generation
+    const imageModel = options.model || this.imageModel;
+
+    const requestBody = {
+      model: imageModel,
+      messages: [
+        { role: 'user', content: prompt },
+      ],
+      modalities: ['image', 'text'],
+    };
+
+    // Add image_config for aspect ratio if specified (Gemini models support this)
+    if (options.aspectRatio) {
+      requestBody.image_config = { aspect_ratio: options.aspectRatio };
+    }
+
+    const response = await this.request(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
+        'HTTP-Referer': window.location.href,
+        'X-Title': 'Diablo Web AI',
       },
-      body: JSON.stringify({
-        model: options.model || this.imageModel,
-        prompt,
-        n: 1,
-        size: options.size || '256x256',
-        response_format: 'b64_json',
-      }),
+      body: JSON.stringify(requestBody),
     });
 
-    return response.data[0].b64_json;
+    // OpenRouter returns images in message.images array as base64 data URLs
+    const message = response.choices[0].message;
+    if (message.images && message.images.length > 0) {
+      const imageUrl = message.images[0].image_url?.url || message.images[0];
+      // Extract base64 from data URL if needed
+      if (typeof imageUrl === 'string' && imageUrl.startsWith('data:')) {
+        return imageUrl.split(',')[1]; // Return just the base64 part
+      }
+      return imageUrl;
+    }
+
+    throw new Error('No image generated in response');
   }
 
   async getModels() {
@@ -218,6 +253,9 @@ class OpenRouterProvider extends BaseProvider {
       },
     });
 
+    // Store full model data for image model detection
+    this._allModelsData = response.data;
+
     return response.data
       .filter(m => m.context_length >= 4096)
       .map(m => ({
@@ -226,8 +264,37 @@ class OpenRouterProvider extends BaseProvider {
         context: m.context_length,
         pricing: m.pricing,
         description: m.description,
+        outputModalities: m.architecture?.output_modalities || [],
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async getImageModels() {
+    if (this.imageModelsCache) {
+      return this.imageModelsCache;
+    }
+
+    const response = await this.request(PROVIDER_CONFIGS.openrouter.modelsEndpoint, {
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+    });
+
+    // Filter for models that have 'image' in output_modalities
+    this.imageModelsCache = response.data
+      .filter(m => {
+        const outputModalities = m.architecture?.output_modalities || [];
+        return outputModalities.includes('image');
+      })
+      .map(m => ({
+        id: m.id,
+        name: m.name || m.id,
+        pricing: m.pricing,
+        description: m.description,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return this.imageModelsCache;
   }
 }
 
