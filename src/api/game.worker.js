@@ -442,6 +442,322 @@ async function init_game(mpq, spawn, offscreen) {
   }, 50);
 }
 
+// ============================================================
+// Neural AI Memory Bridge - for AI level injection
+// ============================================================
+
+const NEURAL_DMAXX = 40;
+const NEURAL_DMAXY = 40;
+const NEURAL_GRID_SIZE = NEURAL_DMAXX * NEURAL_DMAXY;
+
+// Memory pointer cache for neural operations
+let neuralMemory = {
+  dLevel: null,
+  dMonster: null,
+  dObject: null,
+  discovered: false,
+};
+
+// Current level tracking for change detection
+let neuralCurrentLevel = -1;
+let neuralPendingLevel = null;
+
+/**
+ * Scan WASM memory to find dungeon arrays
+ */
+function handleNeuralScanMemory() {
+  if (!wasm || !wasm.HEAPU8) {
+    worker.postMessage({
+      action: 'neural_scan_result',
+      success: false,
+      error: 'WASM not available'
+    });
+    return;
+  }
+
+  const heap = wasm.HEAPU8;
+  const heapSize = heap.length;
+
+  console.log('[Neural] Scanning memory... Size:', heapSize);
+
+  const candidates = [];
+
+  // Search for repeating 40-byte patterns that look like dungeon rows
+  // Cathedral tiles are typically 0-60 range
+  for (let offset = 0; offset < heapSize - NEURAL_GRID_SIZE; offset += 4) {
+    // Quick check: sample some tiles
+    const sample = [
+      heap[offset],
+      heap[offset + 40],
+      heap[offset + 80],
+    ];
+
+    // Dungeon tiles are typically 0-60 for cathedral
+    const isDungeonLike = sample.every(v => v >= 0 && v <= 60);
+
+    if (isDungeonLike) {
+      // Count floor and wall tiles in a 40x40 region
+      let floors = 0;
+      let walls = 0;
+      let stairs = 0;
+      let zeros = 0;
+
+      for (let i = 0; i < NEURAL_GRID_SIZE; i++) {
+        const tile = heap[offset + i];
+        if (tile === 0) zeros++;
+        else if (tile >= 13 && tile <= 15) floors++;
+        else if (tile >= 1 && tile <= 12) walls++;
+        else if (tile === 36 || tile === 37) stairs++;
+      }
+
+      // A valid dungeon level should have significant floors, walls, and stairs
+      // Not too many zeros (empty memory)
+      if (floors > 100 && walls > 50 && stairs >= 1 && zeros < 800) {
+        candidates.push({
+          offset,
+          floors,
+          walls,
+          stairs,
+          zeros,
+          score: floors + walls * 2 + stairs * 50 - zeros,
+        });
+      }
+    }
+  }
+
+  if (candidates.length > 0) {
+    // Sort by score, best match first
+    candidates.sort((a, b) => b.score - a.score);
+
+    const best = candidates[0];
+    neuralMemory.dLevel = best.offset;
+    neuralMemory.discovered = true;
+
+    console.log('[Neural] Found dLevel at offset:', best.offset);
+    console.log('[Neural] Stats - floors:', best.floors, 'walls:', best.walls, 'stairs:', best.stairs);
+
+    worker.postMessage({
+      action: 'neural_scan_result',
+      success: true,
+      pointer: best.offset,
+      stats: {
+        floors: best.floors,
+        walls: best.walls,
+        stairs: best.stairs,
+        candidates: candidates.length,
+      }
+    });
+  } else {
+    console.log('[Neural] No dungeon arrays found');
+    worker.postMessage({
+      action: 'neural_scan_result',
+      success: false,
+      error: 'No dungeon arrays found'
+    });
+  }
+}
+
+/**
+ * Read entire dungeon grid
+ */
+function handleNeuralReadGrid() {
+  if (!neuralMemory.dLevel || !wasm.HEAPU8) {
+    worker.postMessage({
+      action: 'neural_grid_result',
+      success: false,
+      error: 'dLevel not discovered'
+    });
+    return;
+  }
+
+  const grid = [];
+  const heap = wasm.HEAPU8;
+
+  for (let y = 0; y < NEURAL_DMAXY; y++) {
+    grid[y] = [];
+    for (let x = 0; x < NEURAL_DMAXX; x++) {
+      const offset = neuralMemory.dLevel + y * NEURAL_DMAXX + x;
+      grid[y][x] = heap[offset];
+    }
+  }
+
+  worker.postMessage({
+    action: 'neural_grid_result',
+    success: true,
+    grid: grid
+  });
+}
+
+/**
+ * Write entire dungeon grid
+ */
+function handleNeuralWriteGrid(grid) {
+  if (!neuralMemory.dLevel || !wasm.HEAPU8) {
+    worker.postMessage({
+      action: 'neural_write_result',
+      success: false,
+      error: 'dLevel not discovered'
+    });
+    return;
+  }
+
+  if (!grid || grid.length !== NEURAL_DMAXY) {
+    worker.postMessage({
+      action: 'neural_write_result',
+      success: false,
+      error: 'Invalid grid dimensions'
+    });
+    return;
+  }
+
+  const heap = wasm.HEAPU8;
+
+  for (let y = 0; y < NEURAL_DMAXY; y++) {
+    if (!grid[y] || grid[y].length !== NEURAL_DMAXX) {
+      worker.postMessage({
+        action: 'neural_write_result',
+        success: false,
+        error: `Invalid row ${y}`
+      });
+      return;
+    }
+
+    for (let x = 0; x < NEURAL_DMAXX; x++) {
+      const offset = neuralMemory.dLevel + y * NEURAL_DMAXX + x;
+      heap[offset] = grid[y][x];
+    }
+  }
+
+  console.log('[Neural] Wrote dungeon grid');
+  worker.postMessage({
+    action: 'neural_write_result',
+    success: true
+  });
+}
+
+/**
+ * Read single tile
+ */
+function handleNeuralReadTile(x, y) {
+  if (!neuralMemory.dLevel || !wasm.HEAPU8) {
+    worker.postMessage({
+      action: 'neural_tile_result',
+      success: false,
+      error: 'dLevel not discovered'
+    });
+    return;
+  }
+
+  if (x < 0 || x >= NEURAL_DMAXX || y < 0 || y >= NEURAL_DMAXY) {
+    worker.postMessage({
+      action: 'neural_tile_result',
+      success: false,
+      error: 'Coordinates out of bounds'
+    });
+    return;
+  }
+
+  const offset = neuralMemory.dLevel + y * NEURAL_DMAXX + x;
+  const tile = wasm.HEAPU8[offset];
+
+  worker.postMessage({
+    action: 'neural_tile_result',
+    success: true,
+    x,
+    y,
+    tile
+  });
+}
+
+/**
+ * Write single tile
+ */
+function handleNeuralWriteTile(x, y, tileId) {
+  if (!neuralMemory.dLevel || !wasm.HEAPU8) {
+    worker.postMessage({
+      action: 'neural_tile_result',
+      success: false,
+      error: 'dLevel not discovered'
+    });
+    return;
+  }
+
+  if (x < 0 || x >= NEURAL_DMAXX || y < 0 || y >= NEURAL_DMAXY) {
+    worker.postMessage({
+      action: 'neural_tile_result',
+      success: false,
+      error: 'Coordinates out of bounds'
+    });
+    return;
+  }
+
+  const offset = neuralMemory.dLevel + y * NEURAL_DMAXX + x;
+  wasm.HEAPU8[offset] = tileId;
+
+  console.log(`[Neural] Wrote tile ${tileId} at (${x}, ${y})`);
+  worker.postMessage({
+    action: 'neural_tile_result',
+    success: true,
+    x,
+    y,
+    tile: tileId
+  });
+}
+
+/**
+ * Get neural memory info
+ */
+function handleNeuralGetInfo() {
+  worker.postMessage({
+    action: 'neural_info_result',
+    initialized: !!wasm,
+    discovered: neuralMemory.discovered,
+    pointers: {
+      dLevel: neuralMemory.dLevel,
+      dMonster: neuralMemory.dMonster,
+      dObject: neuralMemory.dObject,
+    },
+    heapSize: wasm?.HEAPU8?.length || 0,
+    gridSize: NEURAL_GRID_SIZE,
+    dimensions: { width: NEURAL_DMAXX, height: NEURAL_DMAXY },
+    currentLevel: neuralCurrentLevel,
+  });
+}
+
+/**
+ * Inject a complete level (grid + monsters + objects)
+ */
+function handleNeuralInjectLevel(levelData) {
+  if (!levelData) {
+    worker.postMessage({
+      action: 'neural_inject_result',
+      success: false,
+      error: 'No level data provided'
+    });
+    return;
+  }
+
+  // Store as pending level to inject when appropriate
+  neuralPendingLevel = levelData;
+
+  console.log('[Neural] Level data queued for injection');
+  worker.postMessage({
+    action: 'neural_inject_result',
+    success: true,
+    queued: true
+  });
+
+  // If we have dLevel discovered, try immediate injection
+  if (neuralMemory.discovered && levelData.grid) {
+    handleNeuralWriteGrid(levelData.grid);
+    console.log('[Neural] Grid injected immediately');
+  }
+}
+
+// ============================================================
+// End Neural AI Memory Bridge
+// ============================================================
+
 worker.addEventListener("message", ({data}) => {
   switch (data.action) {
   case "init":
@@ -467,6 +783,30 @@ worker.addEventListener("message", ({data}) => {
       }
     });
     break;
+
+  // Neural AI Commands - for level injection
+  case "neural_scan_memory":
+    handleNeuralScanMemory();
+    break;
+  case "neural_read_grid":
+    handleNeuralReadGrid();
+    break;
+  case "neural_write_grid":
+    handleNeuralWriteGrid(data.grid);
+    break;
+  case "neural_read_tile":
+    handleNeuralReadTile(data.x, data.y);
+    break;
+  case "neural_write_tile":
+    handleNeuralWriteTile(data.x, data.y, data.tileId);
+    break;
+  case "neural_get_info":
+    handleNeuralGetInfo();
+    break;
+  case "neural_inject_level":
+    handleNeuralInjectLevel(data.levelData);
+    break;
+
   default:
   }
 });

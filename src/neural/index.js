@@ -28,6 +28,7 @@ export { default as enemyPlacement } from './EnemyPlacement';
 export { default as campaignGenerator } from './CampaignGenerator';
 export { default as worldBuilder } from './WorldBuilder';
 export { default as GameStorage } from './GameStorage';
+export { default as WASMBridge } from './WASMBridge';
 
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
@@ -51,6 +52,7 @@ export * from './EnemyPlacement';
 export * from './CampaignGenerator';
 export * from './WorldBuilder';
 export * from './GameStorage';
+export * from './WASMBridge';
 
 /**
  * Neural Augmentation System status
