@@ -6,6 +6,7 @@
  */
 
 import React, { Component } from 'react';
+import axios from 'axios';
 import './ModEditor.scss';
 import './LevelPreview.scss';
 import './CampaignBlueprintPanel.scss';
@@ -16,6 +17,9 @@ import { MPQWriter } from './MPQWriter';
 import { MpqReader } from '../api/savefile';
 import { LevelPreview, MiniMap } from './LevelPreview';
 import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
+
+// Spawn.mpq valid sizes
+const SpawnSizes = [50274091, 25830791];
 
 // Operation status icons
 const STATUS_ICONS = {
@@ -57,6 +61,7 @@ export class ModEditor extends Component {
       status: 'idle', // idle, loading, working, ready, error
       error: null,
       progress: 0,
+      loadingMessage: null,
 
       // UI state
       showFileList: false,
@@ -122,19 +127,80 @@ export class ModEditor extends Component {
   }
 
   /**
-   * Check if spawn.mpq is already in the filesystem
+   * Check if spawn.mpq is already in the filesystem, or fetch from server
    */
   async checkExistingMPQ() {
+    this.setState({ status: 'loading', loadingMessage: 'Looking for spawn.mpq...' });
+
     try {
+      // First, try to get from filesystem prop
       const fs = this.props.filesystem;
       if (fs && fs.files) {
         const spawnMpq = fs.files.get('spawn.mpq');
         if (spawnMpq) {
-          await this.loadMPQFromBuffer(spawnMpq.buffer || spawnMpq, 'spawn.mpq');
+          // spawnMpq is a Uint8Array, get its underlying ArrayBuffer
+          const buffer = spawnMpq.buffer || spawnMpq;
+          console.log('[ModEditor] Found spawn.mpq in filesystem');
+          await this.loadMPQFromBuffer(buffer, 'spawn.mpq');
+          return;
+        }
+      }
+
+      // If not in filesystem, fetch from server
+      console.log('[ModEditor] spawn.mpq not found in filesystem, fetching from server...');
+      await this.fetchSpawnMPQ();
+    } catch (error) {
+      console.warn('[ModEditor] Could not auto-load spawn.mpq:', error);
+      this.setState({
+        status: 'idle',
+        loadingMessage: null,
+        error: 'Click "Load MPQ" to load spawn.mpq manually',
+      });
+    }
+  }
+
+  /**
+   * Fetch spawn.mpq from the server
+   */
+  async fetchSpawnMPQ() {
+    this.setState({ loadingMessage: 'Downloading spawn.mpq...' });
+
+    try {
+      const response = await axios.request({
+        url: process.env.PUBLIC_URL + '/spawn.mpq',
+        responseType: 'arraybuffer',
+        onDownloadProgress: (e) => {
+          const total = e.total || SpawnSizes[1];
+          const percent = Math.round((e.loaded / total) * 100);
+          this.setState({
+            loadingMessage: `Downloading spawn.mpq... ${percent}%`,
+            progress: percent,
+          });
+        },
+        headers: {
+          'Cache-Control': 'max-age=31536000',
+        },
+      });
+
+      // Validate size
+      if (!SpawnSizes.includes(response.data.byteLength)) {
+        throw new Error('Invalid spawn.mpq size - file may be corrupted');
+      }
+
+      console.log('[ModEditor] Successfully downloaded spawn.mpq');
+      await this.loadMPQFromBuffer(response.data, 'spawn.mpq');
+
+      // Also store in filesystem for future use
+      const fs = this.props.filesystem;
+      if (fs && fs.files) {
+        const data = new Uint8Array(response.data);
+        fs.files.set('spawn.mpq', data);
+        if (fs.update) {
+          fs.update('spawn.mpq', data.slice());
         }
       }
     } catch (error) {
-      console.warn('[ModEditor] No existing spawn.mpq found');
+      throw new Error(`Failed to download spawn.mpq: ${error.message}`);
     }
   }
 
@@ -176,6 +242,9 @@ export class ModEditor extends Component {
       mpqFileName: fileName,
       fileList,
       status: 'ready',
+      loadingMessage: null,
+      progress: 0,
+      error: null,
     });
 
     console.log(`[ModEditor] Loaded ${fileName} with ${fileList.length} files`);
@@ -403,10 +472,33 @@ export class ModEditor extends Component {
       modifiedFiles,
       status,
       error,
+      loadingMessage,
+      progress,
       showFileList,
       fileList,
       selectedFile,
     } = this.state;
+
+    // Show loading screen while fetching spawn.mpq
+    if (status === 'loading' && loadingMessage) {
+      return (
+        <div className="mod-editor">
+          <div className="mod-editor-header">
+            <h2>AI Mod Editor</h2>
+            <button onClick={this.handleClose} className="btn btn-close">Close</button>
+          </div>
+          <div className="mod-editor-loading">
+            <div className="loading-spinner">⟳</div>
+            <div className="loading-message">{loadingMessage}</div>
+            {progress > 0 && (
+              <div className="loading-progress">
+                <div className="progress-bar" style={{ width: `${progress}%` }} />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="mod-editor">

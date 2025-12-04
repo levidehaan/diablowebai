@@ -52,6 +52,7 @@ import MonsterMapper from './MonsterMapper';
 import ObjectMapper from './ObjectMapper';
 import DUNParser from './DUNParser';
 import { validateLevel, checkPath } from './LevelValidator';
+import { getGameLevelPath, GAME_LEVEL_PATHS } from './CampaignConverter';
 import questTriggerManager, { TRIGGER_TYPES, ACTION_TYPES, TriggerBuilder, ActionBuilder } from './QuestTriggers';
 import { buildProgress, BUILD_STATUS, TASK_STATUS } from './CampaignBuildProgress';
 
@@ -754,7 +755,8 @@ Return as JSON with structure:
 
       try {
         const level = await this.generateLevel(location);
-        const path = `levels/${location.theme}/ai_${location.id}.dun`;
+        // Use actual game level paths so the game engine loads them
+        const path = getGameLevelPath(location.theme, i + 1, 'quest');
         this.generatedContent.levels.set(path, level);
 
         // Validate the level

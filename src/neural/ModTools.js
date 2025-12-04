@@ -15,9 +15,9 @@ import DUNParser from './DUNParser';
 import TileMapper from './TileMapper';
 import MonsterMapper from './MonsterMapper';
 import ObjectMapper from './ObjectMapper';
-import LevelValidator, { validateLevel, checkPath, analyzeAreas } from './LevelValidator';
-import CampaignConverter, { convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
-import ProceduralGenerator, { generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme, visualizeDungeon } from './ProceduralGenerator';
+import { validateLevel, checkPath, analyzeAreas } from './LevelValidator';
+import { convertCampaign, convertLevel, getValidationReport, getGameLevelPath, GAME_LEVEL_PATHS } from './CampaignConverter';
+import { generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme, visualizeDungeon } from './ProceduralGenerator';
 import CELEncoder, { createCEL, createTestPatternCEL } from './CELEncoder';
 import questTriggerManager, { TRIGGER_TYPES, ACTION_TYPES, TriggerBuilder, ActionBuilder } from './QuestTriggers';
 import {
@@ -82,6 +82,91 @@ export const MOD_TOOLS = {
           files: filtered,
           count: filtered.length,
           totalFiles: files.length,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get available game level paths that can be replaced
+   * IMPORTANT: Main dungeon levels (floors 1-16) are procedurally generated at runtime.
+   * Only quest areas, special set pieces, and room templates can be replaced via DUN files.
+   */
+  getGameLevelPaths: {
+    name: 'getGameLevelPaths',
+    description: 'Get actual game level paths that can be replaced with AI-generated content. Returns paths organized by theme (cathedral, catacombs, caves, hell, town).',
+    parameters: {
+      theme: {
+        type: 'string',
+        description: 'Filter by theme (cathedral, catacombs, caves, hell, town) or "all" for all themes',
+        required: false,
+      },
+    },
+    execute: async (context, params = {}) => {
+      try {
+        const theme = params.theme?.toLowerCase();
+
+        if (theme && theme !== 'all' && GAME_LEVEL_PATHS[theme]) {
+          return {
+            success: true,
+            theme,
+            paths: GAME_LEVEL_PATHS[theme],
+            note: 'These are actual game files that can be replaced. Main dungeon floors are procedurally generated and cannot be directly replaced.',
+          };
+        }
+
+        return {
+          success: true,
+          allPaths: GAME_LEVEL_PATHS,
+          themes: Object.keys(GAME_LEVEL_PATHS),
+          note: 'These are actual game files that can be replaced. Main dungeon floors are procedurally generated and cannot be directly replaced.',
+          examples: {
+            cathedral: 'levels\\l1data\\sklkng.dun - Skeleton King lair',
+            catacombs: 'levels\\l2data\\blind1.dun - Halls of the Blind',
+            caves: 'levels\\l3data\\anvil.dun - Anvil of Fury quest',
+            hell: 'levels\\l4data\\diab1.dun - Diablo\'s chamber',
+            town: 'levels\\towndata\\sector1s.dun - Town sector',
+          },
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get the suggested game path for a generated level
+   */
+  getSuggestedLevelPath: {
+    name: 'getSuggestedLevelPath',
+    description: 'Get a suggested game file path for AI-generated level based on theme and index',
+    parameters: {
+      theme: {
+        type: 'string',
+        description: 'Level theme: cathedral, catacombs, caves, hell, or town',
+        required: true,
+      },
+      levelIndex: {
+        type: 'number',
+        description: 'Level index (1-based) - determines which quest area to replace',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const theme = params.theme?.toLowerCase() || 'cathedral';
+        const levelIndex = params.levelIndex || 1;
+
+        const path = getGameLevelPath(theme, levelIndex, 'quest');
+
+        return {
+          success: true,
+          suggestedPath: path,
+          theme,
+          levelIndex,
+          note: 'This path points to an actual game file that will be replaced with your AI content.',
         };
       } catch (error) {
         return { success: false, error: error.message };
