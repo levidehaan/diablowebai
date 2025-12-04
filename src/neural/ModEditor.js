@@ -9,6 +9,7 @@ import React, { Component } from 'react';
 import './ModEditor.scss';
 import './LevelPreview.scss';
 import './CampaignBlueprintPanel.scss';
+import './CampaignBuildProgress.scss';
 import { ModToolExecutor } from './ModTools';
 import DUNParser from './DUNParser';
 import { MPQWriter } from './MPQWriter';
@@ -672,12 +673,29 @@ export class ModEditor extends Component {
         </div>
 
         {/* Campaign Blueprint Panel (collapsible) */}
-        <details className="campaign-blueprint-section">
+        <details className="campaign-blueprint-section" open>
           <summary>Campaign Blueprint Editor</summary>
           <CampaignBlueprintPanel
             executor={this.executor}
             onBlueprintChange={(blueprint) => {
               console.log('[ModEditor] Blueprint changed:', blueprint?.id);
+            }}
+            onBuildComplete={(result) => {
+              console.log('[ModEditor] Build complete:', result);
+              // Update modified files list
+              if (result.levels) {
+                const newModifiedFiles = [];
+                for (const [path, data] of result.levels) {
+                  newModifiedFiles.push({ path, type: 'dun', isNew: true });
+                }
+                this.setState(state => ({
+                  modifiedFiles: [...state.modifiedFiles, ...newModifiedFiles],
+                }));
+              }
+            }}
+            onPlayMod={(result) => {
+              console.log('[ModEditor] Play mod requested');
+              this.handleStartModded();
             }}
           />
         </details>

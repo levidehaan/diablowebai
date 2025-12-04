@@ -98,6 +98,17 @@ export { CampaignManager, SaveGameButton, QuickExportButton } from './CampaignMa
 // Export Campaign Blueprint UI
 export { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
 
+// Export Build Progress System
+export {
+  BuildProgressPanel,
+  BuildProgressIndicator,
+  BuildProgressEmitter,
+  buildProgress,
+  BUILD_STATUS,
+  TASK_STATUS,
+  BUILD_PHASES,
+} from './CampaignBuildProgress';
+
 // Export Asset Generator Adapter for NanoBanana integration
 export { AssetGeneratorAdapter, createAssetGenerator, assetGenerator } from './AssetGeneratorAdapter';
 

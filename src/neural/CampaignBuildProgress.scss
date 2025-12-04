@@ -1,0 +1,478 @@
+/**
+ * Campaign Build Progress Styles
+ */
+
+.build-progress-panel {
+  background: #0a0a14;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  overflow: hidden;
+
+  &.in_progress {
+    border-color: #4a6a9a;
+    box-shadow: 0 0 10px rgba(74, 106, 154, 0.3);
+  }
+
+  &.completed {
+    border-color: #2a6a4a;
+  }
+
+  &.failed {
+    border-color: #8a3a3a;
+  }
+}
+
+/* Header */
+.progress-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #12121e;
+  cursor: pointer;
+  border-bottom: 1px solid #2a2a4a;
+
+  &:hover {
+    background: #18182a;
+  }
+
+  .header-icon {
+    color: #666;
+    font-size: 10px;
+  }
+
+  .header-title {
+    flex: 1;
+    color: #aaa;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 11px;
+  }
+
+  .header-status {
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+    font-weight: 600;
+
+    &.status-idle {
+      background: #333;
+      color: #888;
+    }
+
+    &.status-starting,
+    &.status-in_progress {
+      background: #2a4a7a;
+      color: #8ac;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    &.status-completed {
+      background: #2a5a3a;
+      color: #8c8;
+    }
+
+    &.status-failed {
+      background: #5a2a2a;
+      color: #c88;
+    }
+
+    &.status-cancelled {
+      background: #4a4a2a;
+      color: #cc8;
+    }
+  }
+
+  .header-progress {
+    color: #ffd700;
+    font-weight: bold;
+    min-width: 35px;
+    text-align: right;
+  }
+
+  .header-duration {
+    color: #666;
+    font-size: 11px;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Content */
+.progress-content {
+  padding: 12px;
+}
+
+/* Overall Progress Bar */
+.overall-progress {
+  position: relative;
+  height: 20px;
+  background: #1a1a2a;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  overflow: hidden;
+
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #3a5a8a 0%, #4a8aca 100%);
+    transition: width 0.3s ease;
+    border-radius: 4px;
+  }
+
+  .progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Phases List */
+.phases-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.phase-item {
+  background: #151520;
+  border-radius: 4px;
+  overflow: hidden;
+  border-left: 3px solid transparent;
+  transition: all 0.2s;
+
+  &.pending {
+    border-left-color: #333;
+    opacity: 0.6;
+  }
+
+  &.in-progress {
+    border-left-color: #4a8aca;
+    background: #1a1a30;
+
+    .phase-icon {
+      animation: spin 1s linear infinite;
+    }
+  }
+
+  &.success {
+    border-left-color: #4a8a5a;
+  }
+
+  &.warning {
+    border-left-color: #8a8a4a;
+  }
+
+  &.error {
+    border-left-color: #8a4a4a;
+  }
+
+  &.active {
+    background: #1a1a35;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.phase-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+
+  .phase-icon {
+    width: 14px;
+    text-align: center;
+    font-size: 12px;
+  }
+
+  .phase-name {
+    flex: 1;
+    color: #ccc;
+    font-size: 12px;
+  }
+
+  .phase-progress {
+    color: #888;
+    font-size: 11px;
+    min-width: 30px;
+    text-align: right;
+  }
+}
+
+/* Status colors for icons */
+.pending .phase-icon { color: #555; }
+.in-progress .phase-icon { color: #4a8aca; }
+.success .phase-icon { color: #4a8a5a; }
+.warning .phase-icon { color: #8a8a4a; }
+.error .phase-icon { color: #8a4a4a; }
+
+/* Phase Tasks */
+.phase-tasks {
+  padding: 0 10px 8px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #12121a;
+  border-radius: 3px;
+  font-size: 11px;
+
+  .task-icon {
+    width: 12px;
+    text-align: center;
+    font-size: 10px;
+  }
+
+  .task-name {
+    flex: 1;
+    color: #aaa;
+  }
+
+  .task-retries {
+    color: #886;
+    font-size: 10px;
+  }
+
+  &.in-progress {
+    background: #1a1a2a;
+    .task-name { color: #8ac; }
+    .task-icon { color: #4a8aca; animation: blink 0.8s ease-in-out infinite; }
+  }
+
+  &.success {
+    .task-name { color: #8a8; }
+    .task-icon { color: #4a8a5a; }
+  }
+
+  &.error {
+    .task-name { color: #c88; }
+    .task-icon { color: #8a4a4a; }
+  }
+
+  &.retrying {
+    background: #1a1a1a;
+    .task-name { color: #cc8; }
+    .task-icon { color: #8a8a4a; }
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Issues Summary */
+.issues-summary {
+  display: flex;
+  gap: 12px;
+  padding: 8px 10px;
+  background: #151520;
+  border-radius: 4px;
+  margin-bottom: 12px;
+
+  .error-count {
+    color: #c88;
+    font-size: 11px;
+
+    &::before {
+      content: '✗ ';
+    }
+  }
+
+  .warning-count {
+    color: #cc8;
+    font-size: 11px;
+
+    &::before {
+      content: '! ';
+    }
+  }
+}
+
+/* Logs Section */
+.logs-section {
+  border: 1px solid #2a2a3a;
+  border-radius: 4px;
+  background: #0a0a10;
+  overflow: hidden;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #12121a;
+  cursor: pointer;
+  color: #888;
+  font-size: 11px;
+
+  &:hover {
+    background: #18182a;
+  }
+
+  .auto-scroll {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: #666;
+    cursor: pointer;
+
+    input[type="checkbox"] {
+      width: 12px;
+      height: 12px;
+    }
+  }
+}
+
+.logs-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #0a0a10;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+  }
+}
+
+.log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 11px;
+  line-height: 1.4;
+
+  .log-icon {
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .log-message {
+    flex: 1;
+    word-break: break-word;
+  }
+
+  &.log-info {
+    color: #888;
+    .log-icon { color: #668; }
+  }
+
+  &.log-success {
+    color: #8a8;
+    .log-icon { color: #4a8a5a; }
+  }
+
+  &.log-warning {
+    color: #cc8;
+    .log-icon { color: #8a8a4a; }
+  }
+
+  &.log-error {
+    color: #c88;
+    .log-icon { color: #8a4a4a; }
+  }
+
+  &.log-phase {
+    color: #8ac;
+    font-weight: 600;
+    padding-top: 6px;
+    .log-icon { color: #4a8aca; }
+  }
+
+  &.log-task {
+    color: #aaa;
+    padding-left: 8px;
+  }
+
+  &.log-progress {
+    color: #888;
+    padding-left: 8px;
+    font-style: italic;
+  }
+}
+
+/* Progress Indicator (compact) */
+.build-progress-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #1a1a2a;
+  border-radius: 12px;
+  font-size: 11px;
+
+  .indicator-status {
+    font-size: 10px;
+  }
+
+  .indicator-phase {
+    color: #aaa;
+  }
+
+  .indicator-progress {
+    color: #ffd700;
+    font-weight: bold;
+  }
+
+  &.in_progress {
+    background: #1a2a4a;
+    border: 1px solid #3a5a8a;
+
+    .indicator-status {
+      color: #4a8aca;
+      animation: spin 1s linear infinite;
+    }
+  }
+
+  &.completed {
+    background: #1a3a2a;
+    border: 1px solid #3a6a4a;
+
+    .indicator-status {
+      color: #4a8a5a;
+    }
+  }
+
+  &.failed {
+    background: #3a1a1a;
+    border: 1px solid #6a3a3a;
+
+    .indicator-status {
+      color: #8a4a4a;
+    }
+  }
+}
