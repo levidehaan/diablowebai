@@ -19,6 +19,7 @@ import LevelValidator, { validateLevel, checkPath, analyzeAreas } from './LevelV
 import CampaignConverter, { convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
 import ProceduralGenerator, { generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme, visualizeDungeon } from './ProceduralGenerator';
 import CELEncoder, { createCEL, createTestPatternCEL } from './CELEncoder';
+import questTriggerManager, { TRIGGER_TYPES, ACTION_TYPES, TriggerBuilder, ActionBuilder } from './QuestTriggers';
 
 // Tool definitions for AI
 export const MOD_TOOLS = {
@@ -1986,6 +1987,474 @@ export const MOD_TOOLS = {
       } catch (error) {
         return { success: false, error: error.message };
       }
+    },
+  },
+
+  // =====================================================
+  // QUEST AND TRIGGER TOOLS
+  // =====================================================
+
+  /**
+   * Create a quest trigger
+   */
+  createTrigger: {
+    name: 'createTrigger',
+    description: 'Create a quest trigger that responds to game events',
+    parameters: {
+      id: {
+        type: 'string',
+        description: 'Unique trigger ID',
+        required: true,
+      },
+      type: {
+        type: 'string',
+        description: 'Trigger type (enter_area, monster_killed, boss_killed, object_activated, level_entered, etc.)',
+        required: true,
+      },
+      conditions: {
+        type: 'object',
+        description: 'Conditions that must match for trigger to fire',
+        required: false,
+      },
+      actions: {
+        type: 'array',
+        description: 'Array of actions to execute when trigger fires',
+        required: true,
+      },
+      oneShot: {
+        type: 'boolean',
+        description: 'Whether trigger fires only once (default true)',
+        required: false,
+      },
+      enabled: {
+        type: 'boolean',
+        description: 'Whether trigger is initially enabled (default true)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const trigger = questTriggerManager.registerTrigger({
+          id: params.id,
+          type: TRIGGER_TYPES[params.type.toUpperCase()] || params.type,
+          conditions: params.conditions || {},
+          actions: params.actions,
+          oneShot: params.oneShot !== false,
+          enabled: params.enabled !== false,
+          description: params.description,
+        });
+
+        return {
+          success: true,
+          triggerId: trigger.id,
+          type: trigger.type,
+          message: `Trigger "${trigger.id}" created`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Create a quest start trigger
+   */
+  createQuestTrigger: {
+    name: 'createQuestTrigger',
+    description: 'Create a trigger that starts a quest when conditions are met',
+    parameters: {
+      triggerId: {
+        type: 'string',
+        description: 'Unique trigger ID',
+        required: true,
+      },
+      triggerType: {
+        type: 'string',
+        description: 'When to start quest (level_entered, enter_area, object_activated)',
+        required: true,
+      },
+      conditions: {
+        type: 'object',
+        description: 'Additional conditions',
+        required: false,
+      },
+      questId: {
+        type: 'string',
+        description: 'Quest ID to start',
+        required: true,
+      },
+      questName: {
+        type: 'string',
+        description: 'Quest display name',
+        required: true,
+      },
+      questDescription: {
+        type: 'string',
+        description: 'Quest description',
+        required: true,
+      },
+      objectives: {
+        type: 'array',
+        description: 'Quest objectives [{id, description, target}]',
+        required: false,
+      },
+      introDialogue: {
+        type: 'object',
+        description: 'Optional dialogue to show {speaker, text}',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const actions = [];
+
+        // Add intro dialogue if provided
+        if (params.introDialogue) {
+          actions.push(ActionBuilder.dialogue(
+            params.introDialogue.speaker,
+            params.introDialogue.text
+          ));
+        }
+
+        // Add quest start action
+        actions.push(ActionBuilder.startQuest(
+          params.questId,
+          params.questName,
+          params.questDescription,
+          params.objectives || []
+        ));
+
+        const trigger = questTriggerManager.registerTrigger({
+          id: params.triggerId,
+          type: TRIGGER_TYPES[params.triggerType.toUpperCase()] || params.triggerType,
+          conditions: params.conditions || {},
+          actions,
+          oneShot: true,
+        });
+
+        return {
+          success: true,
+          triggerId: trigger.id,
+          questId: params.questId,
+          message: `Quest trigger "${trigger.id}" created for quest "${params.questName}"`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Create a kill count trigger
+   */
+  createKillTrigger: {
+    name: 'createKillTrigger',
+    description: 'Create a trigger that fires after killing a specific number of monsters',
+    parameters: {
+      triggerId: {
+        type: 'string',
+        description: 'Unique trigger ID',
+        required: true,
+      },
+      monsterType: {
+        type: 'string',
+        description: 'Type of monster to count',
+        required: true,
+      },
+      count: {
+        type: 'number',
+        description: 'Number of kills required',
+        required: true,
+      },
+      actions: {
+        type: 'array',
+        description: 'Actions to execute',
+        required: true,
+      },
+      questId: {
+        type: 'string',
+        description: 'Optional quest to update objective',
+        required: false,
+      },
+      objectiveId: {
+        type: 'string',
+        description: 'Objective to mark complete',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const actions = [...params.actions];
+
+        // Add objective completion if quest provided
+        if (params.questId && params.objectiveId) {
+          actions.push(ActionBuilder.updateObjective(
+            params.questId,
+            params.objectiveId,
+            params.count,
+            true
+          ));
+        }
+
+        const trigger = TriggerBuilder.onKillCount(
+          params.monsterType,
+          params.count,
+          actions,
+          { id: params.triggerId }
+        );
+
+        questTriggerManager.registerTrigger(trigger);
+
+        return {
+          success: true,
+          triggerId: trigger.id,
+          monsterType: params.monsterType,
+          killsRequired: params.count,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Create a boss encounter trigger
+   */
+  createBossEncounter: {
+    name: 'createBossEncounter',
+    description: 'Create a boss encounter with spawn trigger and defeat rewards',
+    parameters: {
+      encounterId: {
+        type: 'string',
+        description: 'Unique encounter ID',
+        required: true,
+      },
+      bossType: {
+        type: 'string',
+        description: 'Type of boss to spawn',
+        required: true,
+      },
+      bossName: {
+        type: 'string',
+        description: 'Display name for boss',
+        required: true,
+      },
+      spawnLocation: {
+        type: 'object',
+        description: '{x, y} spawn coordinates',
+        required: true,
+      },
+      spawnTrigger: {
+        type: 'object',
+        description: '{type, conditions} for when to spawn boss',
+        required: true,
+      },
+      introDialogue: {
+        type: 'object',
+        description: 'Dialogue when boss spawns {speaker, text}',
+        required: false,
+      },
+      defeatDialogue: {
+        type: 'object',
+        description: 'Dialogue when boss is defeated',
+        required: false,
+      },
+      rewards: {
+        type: 'object',
+        description: '{experience, gold, item} rewards',
+        required: false,
+      },
+      questId: {
+        type: 'string',
+        description: 'Quest to complete on defeat',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const spawnTriggerId = `${params.encounterId}_spawn`;
+        const defeatTriggerId = `${params.encounterId}_defeat`;
+
+        // Create spawn trigger
+        const spawnActions = [];
+
+        if (params.introDialogue) {
+          spawnActions.push(ActionBuilder.dialogue(
+            params.introDialogue.speaker || params.bossName,
+            params.introDialogue.text
+          ));
+        }
+
+        spawnActions.push(ActionBuilder.spawnBoss(
+          params.bossType,
+          params.spawnLocation.x,
+          params.spawnLocation.y,
+          params.bossName
+        ));
+
+        spawnActions.push(ActionBuilder.enableTrigger(defeatTriggerId));
+
+        questTriggerManager.registerTrigger({
+          id: spawnTriggerId,
+          type: TRIGGER_TYPES[params.spawnTrigger.type.toUpperCase()] || params.spawnTrigger.type,
+          conditions: params.spawnTrigger.conditions || {},
+          actions: spawnActions,
+          oneShot: true,
+        });
+
+        // Create defeat trigger
+        const defeatActions = [];
+
+        if (params.defeatDialogue) {
+          defeatActions.push(ActionBuilder.notification(params.defeatDialogue.text || `${params.bossName} has been defeated!`));
+        }
+
+        if (params.rewards) {
+          if (params.rewards.experience) {
+            defeatActions.push(ActionBuilder.grantXP(params.rewards.experience));
+          }
+          if (params.rewards.gold) {
+            defeatActions.push(ActionBuilder.grantGold(params.rewards.gold));
+          }
+        }
+
+        if (params.questId) {
+          defeatActions.push(ActionBuilder.completeQuest(params.questId));
+        }
+
+        questTriggerManager.registerTrigger({
+          id: defeatTriggerId,
+          type: TRIGGER_TYPES.BOSS_KILLED,
+          conditions: { bossId: params.encounterId },
+          actions: defeatActions,
+          oneShot: true,
+          enabled: false, // Enabled when boss spawns
+        });
+
+        return {
+          success: true,
+          encounterId: params.encounterId,
+          spawnTriggerId,
+          defeatTriggerId,
+          bossName: params.bossName,
+          message: `Boss encounter "${params.bossName}" created`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * List all triggers
+   */
+  listTriggers: {
+    name: 'listTriggers',
+    description: 'List all registered quest triggers',
+    parameters: {
+      tag: {
+        type: 'string',
+        description: 'Optional tag to filter triggers',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      let triggers;
+
+      if (params.tag) {
+        triggers = questTriggerManager.getTriggersByTag(params.tag);
+      } else {
+        triggers = Array.from(questTriggerManager.triggers.values());
+      }
+
+      return {
+        success: true,
+        triggers: triggers.map(t => ({
+          id: t.id,
+          type: t.type,
+          enabled: t.enabled,
+          fired: t.fired,
+          oneShot: t.oneShot,
+          description: t.description,
+        })),
+        count: triggers.length,
+      };
+    },
+  },
+
+  /**
+   * Get trigger and action type reference
+   */
+  getTriggerTypes: {
+    name: 'getTriggerTypes',
+    description: 'Get list of available trigger types and action types',
+    parameters: {},
+    execute: async (context, params) => {
+      return {
+        success: true,
+        triggerTypes: Object.keys(TRIGGER_TYPES),
+        actionTypes: Object.keys(ACTION_TYPES),
+        helpers: {
+          TriggerBuilder: ['onEnterArea', 'onMonsterKilled', 'onAreaCleared', 'onBossKilled', 'onObjectActivated', 'onLevelEnter', 'onKillCount'],
+          ActionBuilder: ['dialogue', 'notification', 'startQuest', 'completeQuest', 'updateObjective', 'spawnMonster', 'spawnBoss', 'grantXP', 'grantGold', 'enableTrigger', 'disableTrigger', 'delay', 'chain'],
+        },
+      };
+    },
+  },
+
+  /**
+   * Fire a game event to test triggers
+   */
+  fireEvent: {
+    name: 'fireEvent',
+    description: 'Fire a game event to test triggers',
+    parameters: {
+      eventType: {
+        type: 'string',
+        description: 'Event type to fire',
+        required: true,
+      },
+      eventData: {
+        type: 'object',
+        description: 'Event data',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const triggersFirered = questTriggerManager.processEvent(
+        params.eventType,
+        params.eventData || {}
+      );
+
+      return {
+        success: true,
+        eventType: params.eventType,
+        triggersFirered,
+      };
+    },
+  },
+
+  /**
+   * Get active quests
+   */
+  getActiveQuests: {
+    name: 'getActiveQuests',
+    description: 'Get list of active quests and their progress',
+    parameters: {},
+    execute: async (context, params) => {
+      const quests = questTriggerManager.getActiveQuests();
+
+      return {
+        success: true,
+        quests: quests.map(q => ({
+          id: q.id,
+          name: q.name,
+          description: q.description,
+          status: q.status,
+          objectives: q.objectives,
+        })),
+        count: quests.length,
+      };
     },
   },
 };
