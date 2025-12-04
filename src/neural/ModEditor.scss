@@ -481,6 +481,38 @@
   }
 }
 
+/* Campaign Blueprint Section */
+.campaign-blueprint-section {
+  margin-top: 12px;
+  border: 1px solid #3a3a5c;
+  border-radius: 4px;
+  background: #1a1a2e;
+
+  summary {
+    padding: 10px 12px;
+    cursor: pointer;
+    color: #ffd700;
+    font-size: 13px;
+    font-weight: 500;
+    background: #252540;
+    border-radius: 4px 4px 0 0;
+
+    &:hover {
+      background: #2a2a50;
+    }
+  }
+
+  &[open] summary {
+    border-radius: 4px 4px 0 0;
+    border-bottom: 1px solid #3a3a5c;
+  }
+
+  .campaign-blueprint-panel {
+    min-height: 350px;
+    max-height: 500px;
+  }
+}
+
 /* Tool Reference */
 .tool-reference {
   margin-top: 12px;

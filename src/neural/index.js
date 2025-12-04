@@ -95,6 +95,12 @@ export { AIConfigPanel, AISettingsButton, loadSavedConfig, saveConfig, needsConf
 // Export Campaign Manager UI components
 export { CampaignManager, SaveGameButton, QuickExportButton } from './CampaignManager';
 
+// Export Campaign Blueprint UI
+export { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
+
+// Export Asset Generator Adapter for NanoBanana integration
+export { AssetGeneratorAdapter, createAssetGenerator, assetGenerator } from './AssetGeneratorAdapter';
+
 // Export Character Creator UI components
 export { CharacterCreator } from './CharacterCreator';
 

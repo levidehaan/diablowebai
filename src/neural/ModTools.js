@@ -20,6 +20,32 @@ import CampaignConverter, { convertCampaign, convertLevel, getValidationReport }
 import ProceduralGenerator, { generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme, visualizeDungeon } from './ProceduralGenerator';
 import CELEncoder, { createCEL, createTestPatternCEL } from './CELEncoder';
 import questTriggerManager, { TRIGGER_TYPES, ACTION_TYPES, TriggerBuilder, ActionBuilder } from './QuestTriggers';
+import {
+  CampaignBlueprint,
+  StoryStructure,
+  Act,
+  Chapter,
+  Scene,
+  WorldDefinition,
+  Location,
+  CharacterRoster,
+  Character,
+  Quest,
+  QuestObjective,
+  STORY_TEMPLATES,
+  DUNGEON_THEMES,
+  ASSET_CATEGORIES,
+  CHARACTER_ROLES,
+} from './CampaignBlueprint';
+import {
+  MONSTER_REGISTRY,
+  NPC_REGISTRY,
+  ITEM_REGISTRY,
+  OBJECT_REGISTRY,
+  TILE_REGISTRY,
+  AssetSearch,
+} from './AssetRegistry';
+import { CampaignBuilder, QuickCampaign } from './CampaignBuilder';
 
 // Tool definitions for AI
 export const MOD_TOOLS = {
@@ -2457,6 +2483,906 @@ export const MOD_TOOLS = {
       };
     },
   },
+
+  // =====================================================
+  // CAMPAIGN BLUEPRINT TOOLS
+  // =====================================================
+
+  /**
+   * Create a new campaign blueprint
+   */
+  createCampaignBlueprint: {
+    name: 'createCampaignBlueprint',
+    description: 'Create a new campaign blueprint with story structure, world, characters, and quests',
+    parameters: {
+      title: {
+        type: 'string',
+        description: 'Campaign title',
+        required: true,
+      },
+      description: {
+        type: 'string',
+        description: 'Campaign description',
+        required: false,
+      },
+      template: {
+        type: 'string',
+        description: 'Story template to use (classic_diablo, revenge, corruption, redemption, mystery, custom)',
+        required: false,
+      },
+      acts: {
+        type: 'number',
+        description: 'Number of acts (default 4)',
+        required: false,
+      },
+      difficulty: {
+        type: 'string',
+        description: 'Difficulty (normal, nightmare, hell)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const template = params.template ? STORY_TEMPLATES[params.template.toUpperCase()] : null;
+
+        const blueprint = new CampaignBlueprint({
+          id: `campaign_${Date.now()}`,
+          story: {
+            title: params.title,
+            description: params.description || template?.description || 'A dark adventure awaits...',
+            template: params.template || 'custom',
+            acts: [],
+          },
+          world: {
+            locations: [],
+          },
+          characters: {
+            player: null,
+            npcs: [],
+            enemies: [],
+            bosses: [],
+          },
+          quests: {
+            main: [],
+            side: [],
+          },
+        });
+
+        // Initialize acts based on template or count
+        const actCount = params.acts || (template?.acts?.length) || 4;
+        const themes = ['cathedral', 'catacombs', 'caves', 'hell'];
+
+        for (let i = 0; i < actCount; i++) {
+          const templateAct = template?.acts?.[i];
+          blueprint.story.addAct(new Act({
+            id: `act_${i + 1}`,
+            number: i + 1,
+            title: templateAct?.title || `Act ${i + 1}`,
+            description: templateAct?.description || '',
+            theme: themes[i] || themes[themes.length - 1],
+            levelRange: [(i * 4) + 1, (i + 1) * 4],
+            chapters: [],
+          }));
+        }
+
+        // Store in context
+        context.campaignBlueprint = blueprint;
+
+        return {
+          success: true,
+          campaignId: blueprint.id,
+          title: params.title,
+          template: params.template || 'custom',
+          acts: blueprint.story.acts.map(a => ({
+            id: a.id,
+            number: a.number,
+            title: a.title,
+            theme: a.theme,
+          })),
+          message: `Campaign blueprint "${params.title}" created with ${actCount} acts`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get available story templates
+   */
+  getStoryTemplates: {
+    name: 'getStoryTemplates',
+    description: 'Get available story templates for campaign creation',
+    parameters: {},
+    execute: async () => {
+      return {
+        success: true,
+        templates: Object.entries(STORY_TEMPLATES).map(([key, template]) => ({
+          id: key.toLowerCase(),
+          name: template.name,
+          description: template.description,
+          themes: template.themes,
+          actCount: template.acts?.length || 4,
+          hooks: template.hooks,
+        })),
+        dungeonThemes: Object.keys(DUNGEON_THEMES),
+        assetCategories: Object.keys(ASSET_CATEGORIES),
+        characterRoles: Object.keys(CHARACTER_ROLES),
+      };
+    },
+  },
+
+  /**
+   * Search game assets
+   */
+  searchAssets: {
+    name: 'searchAssets',
+    description: 'Search game assets (monsters, NPCs, items, objects, tiles) for placement',
+    parameters: {
+      type: {
+        type: 'string',
+        description: 'Asset type: monsters, npcs, items, objects, tiles',
+        required: true,
+      },
+      criteria: {
+        type: 'object',
+        description: 'Search criteria (varies by type)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        let results = [];
+        const criteria = params.criteria || {};
+
+        switch (params.type.toLowerCase()) {
+          case 'monsters':
+            results = AssetSearch.searchMonsters(criteria);
+            break;
+          case 'npcs':
+            results = AssetSearch.searchNPCs(criteria);
+            break;
+          case 'items':
+            results = AssetSearch.searchItems(criteria);
+            break;
+          case 'objects':
+            results = AssetSearch.searchObjects(criteria);
+            break;
+          case 'tiles':
+            results = AssetSearch.searchTiles(criteria.theme, criteria.category);
+            break;
+          default:
+            return { success: false, error: `Unknown asset type: ${params.type}` };
+        }
+
+        return {
+          success: true,
+          type: params.type,
+          criteria,
+          results,
+          count: results.length,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get monsters for a dungeon level
+   */
+  getMonstersForDungeonLevel: {
+    name: 'getMonstersForDungeonLevel',
+    description: 'Get appropriate monsters for a specific dungeon level and theme',
+    parameters: {
+      level: {
+        type: 'number',
+        description: 'Dungeon level (1-16)',
+        required: true,
+      },
+      theme: {
+        type: 'string',
+        description: 'Optional theme filter (cathedral, catacombs, caves, hell)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const monsters = AssetSearch.getMonstersForLevel(params.level, params.theme);
+      const boss = AssetSearch.getBossForAct(Math.ceil(params.level / 4));
+
+      return {
+        success: true,
+        level: params.level,
+        theme: params.theme,
+        monsters: monsters.map(m => ({
+          key: m.key,
+          name: m.name,
+          difficulty: m.difficulty,
+          behavior: m.behavior,
+          tags: m.tags,
+        })),
+        recommendedBoss: boss ? {
+          key: boss.key,
+          name: boss.name,
+          title: boss.bossData?.title,
+        } : null,
+        count: monsters.length,
+      };
+    },
+  },
+
+  /**
+   * Get asset registry summary
+   */
+  getAssetSummary: {
+    name: 'getAssetSummary',
+    description: 'Get a summary of all available game assets',
+    parameters: {},
+    execute: async () => {
+      const summary = AssetSearch.getRegistrySummary();
+
+      return {
+        success: true,
+        summary,
+        tags: {
+          monsters: AssetSearch.getAvailableTags('monsters'),
+          items: AssetSearch.getAvailableTags('items'),
+          objects: AssetSearch.getAvailableTags('objects'),
+        },
+      };
+    },
+  },
+
+  /**
+   * Add a chapter to an act
+   */
+  addChapterToAct: {
+    name: 'addChapterToAct',
+    description: 'Add a story chapter to an act in the campaign blueprint',
+    parameters: {
+      actNumber: {
+        type: 'number',
+        description: 'Act number (1-4)',
+        required: true,
+      },
+      title: {
+        type: 'string',
+        description: 'Chapter title',
+        required: true,
+      },
+      description: {
+        type: 'string',
+        description: 'Chapter description/story',
+        required: true,
+      },
+      dungeonLevels: {
+        type: 'array',
+        description: 'Array of dungeon levels in this chapter',
+        required: false,
+      },
+      scenes: {
+        type: 'array',
+        description: 'Array of {type, description, characters, triggers}',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const blueprint = context.campaignBlueprint;
+        if (!blueprint) {
+          return { success: false, error: 'No campaign blueprint. Use createCampaignBlueprint first.' };
+        }
+
+        const act = blueprint.story.acts.find(a => a.number === params.actNumber);
+        if (!act) {
+          return { success: false, error: `Act ${params.actNumber} not found` };
+        }
+
+        const chapter = new Chapter({
+          id: `act${params.actNumber}_ch${act.chapters.length + 1}`,
+          number: act.chapters.length + 1,
+          title: params.title,
+          description: params.description,
+          dungeonLevels: params.dungeonLevels || [],
+          scenes: (params.scenes || []).map((s, i) => new Scene({
+            id: `scene_${i}`,
+            type: s.type || 'exploration',
+            description: s.description,
+            characters: s.characters || [],
+            triggers: s.triggers || [],
+          })),
+        });
+
+        act.addChapter(chapter);
+
+        return {
+          success: true,
+          actNumber: params.actNumber,
+          chapterId: chapter.id,
+          title: chapter.title,
+          message: `Chapter "${chapter.title}" added to Act ${params.actNumber}`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Add a location to the world
+   */
+  addLocation: {
+    name: 'addLocation',
+    description: 'Add a location to the campaign world',
+    parameters: {
+      id: {
+        type: 'string',
+        description: 'Unique location ID',
+        required: true,
+      },
+      name: {
+        type: 'string',
+        description: 'Location name',
+        required: true,
+      },
+      type: {
+        type: 'string',
+        description: 'Location type (town, dungeon, wilderness, boss_arena)',
+        required: true,
+      },
+      theme: {
+        type: 'string',
+        description: 'Visual theme (cathedral, catacombs, caves, hell)',
+        required: false,
+      },
+      description: {
+        type: 'string',
+        description: 'Location description',
+        required: false,
+      },
+      connections: {
+        type: 'array',
+        description: 'Array of connected location IDs',
+        required: false,
+      },
+      dungeonConfig: {
+        type: 'object',
+        description: 'Dungeon config {levels, algorithm, monsterDensity, treasureDensity}',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const blueprint = context.campaignBlueprint;
+        if (!blueprint) {
+          return { success: false, error: 'No campaign blueprint. Use createCampaignBlueprint first.' };
+        }
+
+        const location = new Location({
+          id: params.id,
+          name: params.name,
+          type: params.type,
+          theme: params.theme || 'cathedral',
+          description: params.description || '',
+          connections: params.connections || [],
+          dungeonConfig: params.dungeonConfig,
+        });
+
+        blueprint.world.addLocation(location);
+
+        return {
+          success: true,
+          locationId: location.id,
+          name: location.name,
+          type: location.type,
+          theme: location.theme,
+          message: `Location "${location.name}" added to world`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Add a character to the roster
+   */
+  addCharacter: {
+    name: 'addCharacter',
+    description: 'Add an NPC, enemy, or boss to the campaign',
+    parameters: {
+      id: {
+        type: 'string',
+        description: 'Unique character ID',
+        required: true,
+      },
+      name: {
+        type: 'string',
+        description: 'Character name',
+        required: true,
+      },
+      role: {
+        type: 'string',
+        description: 'Role (mentor, merchant, quest_giver, villain, boss, minion)',
+        required: true,
+      },
+      baseAsset: {
+        type: 'string',
+        description: 'Base asset from registry (e.g., "cain", "diablo")',
+        required: false,
+      },
+      dialogue: {
+        type: 'object',
+        description: 'Dialogue lines {greeting, farewell, quest, combat}',
+        required: false,
+      },
+      location: {
+        type: 'string',
+        description: 'Location ID where character appears',
+        required: false,
+      },
+      customSprite: {
+        type: 'boolean',
+        description: 'Whether to generate custom sprite',
+        required: false,
+      },
+      description: {
+        type: 'string',
+        description: 'Character description for sprite generation',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const blueprint = context.campaignBlueprint;
+        if (!blueprint) {
+          return { success: false, error: 'No campaign blueprint. Use createCampaignBlueprint first.' };
+        }
+
+        // Look up base asset if provided
+        let baseData = null;
+        if (params.baseAsset) {
+          baseData = NPC_REGISTRY[params.baseAsset] || MONSTER_REGISTRY[params.baseAsset];
+        }
+
+        const character = new Character({
+          id: params.id,
+          name: params.name,
+          role: params.role,
+          baseAsset: params.baseAsset,
+          baseData,
+          dialogue: params.dialogue || {},
+          location: params.location,
+          customSprite: params.customSprite || false,
+          spriteDescription: params.description,
+        });
+
+        blueprint.characters.addCharacter(character);
+
+        return {
+          success: true,
+          characterId: character.id,
+          name: character.name,
+          role: character.role,
+          baseAsset: params.baseAsset,
+          hasBaseData: !!baseData,
+          message: `Character "${character.name}" added to roster`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Add a quest to the campaign
+   */
+  addQuest: {
+    name: 'addQuest',
+    description: 'Add a quest to the campaign blueprint',
+    parameters: {
+      id: {
+        type: 'string',
+        description: 'Unique quest ID',
+        required: true,
+      },
+      name: {
+        type: 'string',
+        description: 'Quest name',
+        required: true,
+      },
+      description: {
+        type: 'string',
+        description: 'Quest description',
+        required: true,
+      },
+      type: {
+        type: 'string',
+        description: 'Quest type (main, side)',
+        required: false,
+      },
+      act: {
+        type: 'number',
+        description: 'Act number this quest belongs to',
+        required: false,
+      },
+      giver: {
+        type: 'string',
+        description: 'NPC ID who gives the quest',
+        required: false,
+      },
+      objectives: {
+        type: 'array',
+        description: 'Array of {id, description, type, target, count}',
+        required: true,
+      },
+      rewards: {
+        type: 'object',
+        description: '{experience, gold, items}',
+        required: false,
+      },
+      prerequisites: {
+        type: 'array',
+        description: 'Quest IDs that must be completed first',
+        required: false,
+      },
+      dialogue: {
+        type: 'object',
+        description: '{start, progress, complete} dialogue',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const blueprint = context.campaignBlueprint;
+        if (!blueprint) {
+          return { success: false, error: 'No campaign blueprint. Use createCampaignBlueprint first.' };
+        }
+
+        const quest = new Quest({
+          id: params.id,
+          name: params.name,
+          description: params.description,
+          type: params.type || 'main',
+          act: params.act,
+          giver: params.giver,
+          objectives: params.objectives.map(o => new QuestObjective({
+            id: o.id,
+            description: o.description,
+            type: o.type || 'kill',
+            target: o.target,
+            count: o.count || 1,
+          })),
+          rewards: params.rewards || {},
+          prerequisites: params.prerequisites || [],
+          dialogue: params.dialogue || {},
+        });
+
+        blueprint.quests.addQuest(quest);
+
+        return {
+          success: true,
+          questId: quest.id,
+          name: quest.name,
+          type: quest.type,
+          objectives: quest.objectives.length,
+          message: `Quest "${quest.name}" added to campaign`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Set completion criteria
+   */
+  setCompletionCriteria: {
+    name: 'setCompletionCriteria',
+    description: 'Set the campaign completion criteria and ending',
+    parameters: {
+      finalBoss: {
+        type: 'string',
+        description: 'Character ID of final boss',
+        required: true,
+      },
+      requiredQuests: {
+        type: 'array',
+        description: 'Array of quest IDs required for completion',
+        required: false,
+      },
+      endings: {
+        type: 'array',
+        description: 'Array of {id, name, conditions, dialogue, cinematicDescription}',
+        required: false,
+      },
+      epilogueTemplate: {
+        type: 'string',
+        description: 'Epilogue text template',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const blueprint = context.campaignBlueprint;
+        if (!blueprint) {
+          return { success: false, error: 'No campaign blueprint. Use createCampaignBlueprint first.' };
+        }
+
+        blueprint.completion.setFinalBoss(params.finalBoss);
+
+        if (params.requiredQuests) {
+          params.requiredQuests.forEach(q => blueprint.completion.addRequiredQuest(q));
+        }
+
+        if (params.endings) {
+          params.endings.forEach(e => blueprint.completion.addEnding(e));
+        }
+
+        if (params.epilogueTemplate) {
+          blueprint.completion.setEpilogue(params.epilogueTemplate);
+        }
+
+        return {
+          success: true,
+          finalBoss: params.finalBoss,
+          requiredQuests: blueprint.completion.requiredQuests,
+          endingsCount: blueprint.completion.endings.length,
+          message: 'Completion criteria set',
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Generate a quick campaign
+   */
+  generateQuickCampaign: {
+    name: 'generateQuickCampaign',
+    description: 'Generate a complete campaign using QuickCampaign templates',
+    parameters: {
+      type: {
+        type: 'string',
+        description: 'Campaign type: horror, epic, mystery, classic',
+        required: true,
+      },
+      title: {
+        type: 'string',
+        description: 'Custom title (optional)',
+        required: false,
+      },
+      difficulty: {
+        type: 'string',
+        description: 'Difficulty level',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        let blueprint;
+
+        switch (params.type.toLowerCase()) {
+          case 'horror':
+            blueprint = QuickCampaign.horror(params.title);
+            break;
+          case 'epic':
+            blueprint = QuickCampaign.epic(params.title);
+            break;
+          case 'mystery':
+            blueprint = QuickCampaign.mystery(params.title);
+            break;
+          case 'classic':
+          default:
+            blueprint = QuickCampaign.classic(params.title);
+        }
+
+        context.campaignBlueprint = blueprint;
+
+        return {
+          success: true,
+          campaignId: blueprint.id,
+          title: blueprint.story.title,
+          type: params.type,
+          acts: blueprint.story.acts.length,
+          locations: blueprint.world.locations.length,
+          characters: blueprint.characters.getAllCharacters().length,
+          quests: blueprint.quests.getAllQuests().length,
+          message: `Quick campaign "${blueprint.story.title}" generated`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Build campaign from blueprint
+   */
+  buildCampaignFromBlueprint: {
+    name: 'buildCampaignFromBlueprint',
+    description: 'Build all campaign assets from the current blueprint',
+    parameters: {
+      generateLevels: {
+        type: 'boolean',
+        description: 'Whether to generate dungeon levels (default true)',
+        required: false,
+      },
+      generateAssets: {
+        type: 'boolean',
+        description: 'Whether to generate custom assets (default false)',
+        required: false,
+      },
+      validateOnly: {
+        type: 'boolean',
+        description: 'Only validate, don\'t build (default false)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const blueprint = context.campaignBlueprint;
+        if (!blueprint) {
+          return { success: false, error: 'No campaign blueprint. Use createCampaignBlueprint first.' };
+        }
+
+        const builder = new CampaignBuilder({
+          generateLevels: params.generateLevels !== false,
+          generateAssets: params.generateAssets || false,
+          validateOnly: params.validateOnly || false,
+        });
+
+        const result = await builder.build(blueprint);
+
+        // Store generated levels in modified files
+        if (result.levels && !params.validateOnly) {
+          for (const level of result.levels) {
+            if (level.dunData) {
+              context.modifiedFiles.set(level.path, {
+                type: 'dun',
+                data: level.dunData,
+                modified: Date.now(),
+                isNew: true,
+              });
+            }
+          }
+        }
+
+        return {
+          success: result.success,
+          campaignId: blueprint.id,
+          title: blueprint.story.title,
+          validation: result.validation,
+          levels: result.levels?.length || 0,
+          triggers: result.triggers?.length || 0,
+          assets: result.assets,
+          errors: result.errors,
+          warnings: result.warnings,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Export campaign blueprint
+   */
+  exportCampaignBlueprint: {
+    name: 'exportCampaignBlueprint',
+    description: 'Export the current campaign blueprint as JSON',
+    parameters: {},
+    execute: async (context) => {
+      try {
+        const blueprint = context.campaignBlueprint;
+        if (!blueprint) {
+          return { success: false, error: 'No campaign blueprint. Use createCampaignBlueprint first.' };
+        }
+
+        const exported = blueprint.export();
+
+        return {
+          success: true,
+          campaignId: blueprint.id,
+          title: blueprint.story.title,
+          data: exported,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Import campaign blueprint
+   */
+  importCampaignBlueprint: {
+    name: 'importCampaignBlueprint',
+    description: 'Import a campaign blueprint from JSON',
+    parameters: {
+      data: {
+        type: 'object',
+        description: 'Campaign blueprint JSON data',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const blueprint = CampaignBlueprint.import(params.data);
+        context.campaignBlueprint = blueprint;
+
+        return {
+          success: true,
+          campaignId: blueprint.id,
+          title: blueprint.story.title,
+          acts: blueprint.story.acts.length,
+          locations: blueprint.world.locations.length,
+          characters: blueprint.characters.getAllCharacters().length,
+          quests: blueprint.quests.getAllQuests().length,
+          message: `Campaign "${blueprint.story.title}" imported`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get current blueprint status
+   */
+  getBlueprintStatus: {
+    name: 'getBlueprintStatus',
+    description: 'Get the current campaign blueprint status and summary',
+    parameters: {},
+    execute: async (context) => {
+      const blueprint = context.campaignBlueprint;
+      if (!blueprint) {
+        return {
+          success: true,
+          hasBlueprint: false,
+          message: 'No campaign blueprint loaded. Use createCampaignBlueprint or importCampaignBlueprint.',
+        };
+      }
+
+      const validation = blueprint.validate();
+
+      return {
+        success: true,
+        hasBlueprint: true,
+        campaignId: blueprint.id,
+        title: blueprint.story.title,
+        template: blueprint.story.template,
+        story: {
+          acts: blueprint.story.acts.length,
+          totalChapters: blueprint.story.acts.reduce((sum, a) => sum + a.chapters.length, 0),
+        },
+        world: {
+          locations: blueprint.world.locations.length,
+          dungeons: blueprint.world.locations.filter(l => l.type === 'dungeon').length,
+        },
+        characters: {
+          total: blueprint.characters.getAllCharacters().length,
+          npcs: blueprint.characters.npcs.length,
+          bosses: blueprint.characters.bosses.length,
+        },
+        quests: {
+          main: blueprint.quests.main.length,
+          side: blueprint.quests.side.length,
+        },
+        completion: {
+          finalBoss: blueprint.completion.finalBoss,
+          requiredQuests: blueprint.completion.requiredQuests.length,
+          endings: blueprint.completion.endings.length,
+        },
+        assets: {
+          required: blueprint.assets.requirements.length,
+          needsGeneration: blueprint.assets.requirements.filter(a => a.needsGeneration).length,
+        },
+        validation,
+      };
+    },
+  },
 };
 
 /**
@@ -2552,6 +3478,8 @@ export class ModToolExecutor {
     this.operationLog = [];
     this.dungeonLevel = 1;
     this.levelGenerator = null;
+    this.campaignBlueprint = null;
+    this.assetGenerator = null; // NanoBanana integration
   }
 
   /**
@@ -2578,6 +3506,20 @@ export class ModToolExecutor {
   }
 
   /**
+   * Set campaign blueprint
+   */
+  setCampaignBlueprint(blueprint) {
+    this.campaignBlueprint = blueprint;
+  }
+
+  /**
+   * Set asset generator (NanoBanana integration)
+   */
+  setAssetGenerator(generator) {
+    this.assetGenerator = generator;
+  }
+
+  /**
    * Get execution context
    */
   getContext() {
@@ -2586,6 +3528,8 @@ export class ModToolExecutor {
       modifiedFiles: this.modifiedFiles,
       dungeonLevel: this.dungeonLevel,
       levelGenerator: this.levelGenerator,
+      campaignBlueprint: this.campaignBlueprint,
+      assetGenerator: this.assetGenerator,
     };
   }
 

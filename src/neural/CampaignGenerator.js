@@ -11,6 +11,19 @@
 
 import NeuralConfig from './config';
 import { providerManager } from './providers';
+import {
+  CampaignBlueprint,
+  StoryStructure,
+  Act,
+  Chapter,
+  WorldDefinition,
+  Location,
+  CharacterRoster,
+  Character,
+  Quest,
+  QuestObjective,
+} from './CampaignBlueprint';
+import { MONSTER_REGISTRY, NPC_REGISTRY, AssetSearch } from './AssetRegistry';
 
 /**
  * Campaign structure templates
@@ -742,6 +755,341 @@ Respond with a JSON object containing:
   clear() {
     this.currentCampaign = null;
     this.campaignProgress = {};
+  }
+
+  // =========================================================
+  // CAMPAIGN BLUEPRINT INTEGRATION
+  // =========================================================
+
+  /**
+   * Convert current campaign to CampaignBlueprint format
+   * This allows using the new story-first framework with existing campaigns
+   */
+  toBlueprint() {
+    if (!this.currentCampaign) return null;
+
+    const campaign = this.currentCampaign;
+
+    // Create story structure with acts
+    const storyConfig = {
+      title: campaign.name,
+      description: campaign.description,
+      template: campaign.template || 'custom',
+      acts: [],
+    };
+
+    // Build world locations
+    const worldConfig = {
+      locations: [],
+    };
+
+    // Build character roster
+    const charactersConfig = {
+      player: null,
+      npcs: [],
+      enemies: [],
+      bosses: [],
+    };
+
+    // Convert quests
+    const questsConfig = {
+      main: [],
+      side: [],
+    };
+
+    // Process acts
+    for (const act of campaign.acts) {
+      // Add act to story
+      const actConfig = {
+        id: act.id,
+        number: act.number,
+        title: act.name,
+        description: act.description || '',
+        theme: (act.theme || 'cathedral').toLowerCase(),
+        levelRange: [
+          ((act.number - 1) * 4) + 1,
+          act.number * 4,
+        ],
+        chapters: [],
+      };
+
+      // Convert levels to chapters
+      for (const level of act.levels || []) {
+        actConfig.chapters.push({
+          id: `${act.id}_${level.id}`,
+          number: actConfig.chapters.length + 1,
+          title: level.name,
+          description: level.description || '',
+          dungeonLevels: [level.id],
+        });
+
+        // Add dungeon location
+        worldConfig.locations.push({
+          id: level.id,
+          name: level.name,
+          type: 'dungeon',
+          theme: actConfig.theme,
+          description: level.description || '',
+          dungeonConfig: {
+            levels: 1,
+            difficulty: level.difficulty || 1,
+          },
+        });
+      }
+
+      storyConfig.acts.push(actConfig);
+
+      // Add boss as character
+      if (act.boss) {
+        const bossData = MONSTER_REGISTRY[act.boss.type?.toLowerCase()];
+        charactersConfig.bosses.push({
+          id: `boss_${act.id}`,
+          name: act.boss.name,
+          role: 'boss',
+          baseAsset: act.boss.type?.toLowerCase(),
+          baseData: bossData,
+          dialogue: act.boss.dialogue || {},
+          location: act.levels?.[act.levels.length - 1]?.id,
+        });
+      }
+    }
+
+    // Convert quests
+    for (const quest of campaign.quests || []) {
+      const questConfig = {
+        id: quest.id,
+        name: quest.name,
+        description: quest.description,
+        type: quest.type || 'main',
+        objectives: (quest.objectives || []).map((obj, i) => ({
+          id: `${quest.id}_obj_${i}`,
+          description: obj.description || obj,
+          type: obj.type || 'generic',
+          target: obj.target,
+          count: obj.count || 1,
+        })),
+        rewards: quest.rewards || {},
+      };
+
+      if (quest.type === 'side') {
+        questsConfig.side.push(questConfig);
+      } else {
+        questsConfig.main.push(questConfig);
+      }
+    }
+
+    // Create the blueprint
+    const blueprint = new CampaignBlueprint({
+      id: campaign.id,
+      story: storyConfig,
+      world: worldConfig,
+      characters: charactersConfig,
+      quests: questsConfig,
+    });
+
+    // Set completion criteria
+    const lastAct = campaign.acts[campaign.acts.length - 1];
+    if (lastAct?.boss) {
+      blueprint.completion.setFinalBoss(`boss_${lastAct.id}`);
+    }
+
+    return blueprint;
+  }
+
+  /**
+   * Import from CampaignBlueprint format
+   * Converts the new format back to the legacy format for game engine compatibility
+   */
+  fromBlueprint(blueprint) {
+    if (!blueprint) return null;
+
+    const campaign = {
+      id: blueprint.id,
+      name: blueprint.story.title,
+      description: blueprint.story.description,
+      template: blueprint.story.template,
+      createdAt: new Date().toISOString(),
+      acts: [],
+      quests: [],
+    };
+
+    // Convert acts
+    for (const act of blueprint.story.acts) {
+      const actData = {
+        id: act.id,
+        number: act.number,
+        name: act.title,
+        description: act.description,
+        theme: act.theme.charAt(0).toUpperCase() + act.theme.slice(1),
+        levels: [],
+        boss: null,
+        unlockCondition: act.number > 1 ? {
+          type: 'boss_kill',
+          target: `boss_act_${act.number - 1}`,
+        } : null,
+      };
+
+      // Convert chapters to levels
+      for (const chapter of act.chapters) {
+        const levelIds = chapter.dungeonLevels || [];
+        for (const levelId of levelIds) {
+          const location = blueprint.world.getLocation(levelId);
+          actData.levels.push({
+            id: levelId,
+            name: chapter.title,
+            description: chapter.description,
+            difficulty: location?.dungeonConfig?.difficulty || act.number,
+            objectives: [],
+            spawnAreas: [],
+          });
+        }
+      }
+
+      // Find boss for this act
+      const actBoss = blueprint.characters.bosses.find(b =>
+        b.location && actData.levels.some(l => l.id === b.location)
+      );
+
+      if (actBoss) {
+        actData.boss = {
+          name: actBoss.name,
+          type: actBoss.baseAsset?.toUpperCase() || 'DEMON',
+          dialogue: actBoss.dialogue || {},
+        };
+      }
+
+      campaign.acts.push(actData);
+    }
+
+    // Convert quests
+    for (const quest of blueprint.quests.getAllQuests()) {
+      campaign.quests.push({
+        id: quest.id,
+        name: quest.name,
+        type: quest.type,
+        description: quest.description,
+        objectives: quest.objectives.map(o => ({
+          type: o.type,
+          description: o.description,
+          target: o.target,
+          count: o.count,
+        })),
+        rewards: quest.rewards,
+      });
+    }
+
+    this.currentCampaign = campaign;
+    this.campaignProgress = {
+      campaignId: campaign.id,
+      currentAct: 1,
+      currentLevel: 1,
+      completedObjectives: [],
+      unlockedAreas: [campaign.acts[0]?.levels[0]?.id].filter(Boolean),
+      defeatedBosses: [],
+      collectedItems: [],
+      startedAt: new Date().toISOString(),
+    };
+
+    return campaign;
+  }
+
+  /**
+   * Generate campaign from blueprint with AI enhancement
+   * Uses the blueprint as a foundation and enriches with AI-generated content
+   */
+  async generateFromBlueprint(blueprint, options = {}) {
+    // First import the blueprint structure
+    this.fromBlueprint(blueprint);
+
+    // Then enhance with AI if available
+    const provider = providerManager.getProvider();
+    if (provider && !NeuralConfig.debug.mockAPIResponses && options.enhance) {
+      try {
+        await this.enhanceCampaignWithAI(options);
+      } catch (error) {
+        console.warn('[CampaignGenerator] AI enhancement failed:', error);
+      }
+    }
+
+    return this.currentCampaign;
+  }
+
+  /**
+   * Enhance existing campaign with AI-generated content
+   */
+  async enhanceCampaignWithAI(options = {}) {
+    const provider = providerManager.getProvider();
+    if (!provider || !this.currentCampaign) return;
+
+    const prompt = `Enhance this Diablo-style campaign with additional details:
+
+Campaign: ${this.currentCampaign.name}
+Description: ${this.currentCampaign.description}
+Acts: ${this.currentCampaign.acts.length}
+
+For each act, add:
+1. More detailed level descriptions
+2. Atmospheric environmental details
+3. Boss dialogue (intro and defeat lines)
+4. Side quest hooks
+
+Keep the dark fantasy horror tone. Be creative but stay true to the Diablo atmosphere.
+
+Current acts:
+${JSON.stringify(this.currentCampaign.acts.map(a => ({
+  name: a.name,
+  theme: a.theme,
+  boss: a.boss?.name,
+})), null, 2)}
+
+Respond with JSON containing enhancements:
+{
+  "actEnhancements": [
+    {
+      "actId": "act_1",
+      "levelDescriptions": {"level_id": "description"},
+      "bossDialogue": {"intro": "...", "defeat": "..."},
+      "sideQuestHooks": ["hint about side quest..."]
+    }
+  ]
+}`;
+
+    try {
+      const response = await provider.generateText(prompt, {
+        temperature: 0.7,
+        maxTokens: 2000,
+      });
+
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const enhancements = JSON.parse(this.repairJSON(jsonMatch[0]));
+
+        // Apply enhancements
+        for (const enhancement of enhancements.actEnhancements || []) {
+          const act = this.currentCampaign.acts.find(a => a.id === enhancement.actId);
+          if (!act) continue;
+
+          // Apply level descriptions
+          if (enhancement.levelDescriptions) {
+            for (const level of act.levels) {
+              if (enhancement.levelDescriptions[level.id]) {
+                level.description = enhancement.levelDescriptions[level.id];
+              }
+            }
+          }
+
+          // Apply boss dialogue
+          if (enhancement.bossDialogue && act.boss) {
+            act.boss.dialogue = {
+              ...act.boss.dialogue,
+              ...enhancement.bossDialogue,
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[CampaignGenerator] Enhancement parsing failed:', error);
+    }
   }
 }
 

@@ -8,12 +8,13 @@
 import React, { Component } from 'react';
 import './ModEditor.scss';
 import './LevelPreview.scss';
+import './CampaignBlueprintPanel.scss';
 import { ModToolExecutor } from './ModTools';
 import DUNParser from './DUNParser';
 import { MPQWriter } from './MPQWriter';
 import { MpqReader } from '../api/savefile';
-import { LevelPreview, ASCIIPreview, MiniMap } from './LevelPreview';
-import { getThemeForLevel } from './TileMapper';
+import { LevelPreview, MiniMap } from './LevelPreview';
+import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
 
 // Operation status icons
 const STATUS_ICONS = {
@@ -669,6 +670,17 @@ export class ModEditor extends Component {
             )}
           </div>
         </div>
+
+        {/* Campaign Blueprint Panel (collapsible) */}
+        <details className="campaign-blueprint-section">
+          <summary>Campaign Blueprint Editor</summary>
+          <CampaignBlueprintPanel
+            executor={this.executor}
+            onBlueprintChange={(blueprint) => {
+              console.log('[ModEditor] Blueprint changed:', blueprint?.id);
+            }}
+          />
+        </details>
 
         {/* Tool Reference (collapsible) */}
         <details className="tool-reference">
