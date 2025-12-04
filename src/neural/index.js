@@ -86,6 +86,27 @@ export {
   QuickCampaign,
 } from './CampaignBuilder';
 
+// Export Dungeon Configuration System
+export {
+  default as dungeonConfig,
+  DungeonConfig,
+  DUNGEON_THEMES as DUNGEON_CONFIG_THEMES,
+  DIFFICULTY_PRESETS,
+  LOOT_TIERS,
+  getThemeForLevel,
+  getThemeDataForLevel,
+  createDefaultLevelConfig,
+} from './DungeonConfig';
+
+// Export Campaign Pipeline
+export {
+  default as CampaignPipeline,
+  PIPELINE_STAGES,
+  getOrderedStages,
+  PipelineState,
+  defaultPipeline,
+} from './CampaignPipeline';
+
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
 
@@ -140,6 +161,8 @@ export * from './CampaignBlueprint';
 export * from './AssetRegistry';
 export * from './CampaignBuilder';
 export * from './TownGenerator';
+export * from './DungeonConfig';
+export * from './CampaignPipeline';
 
 /**
  * Neural Augmentation System status

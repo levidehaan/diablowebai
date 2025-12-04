@@ -3,9 +3,25 @@
  *
  * Maps AI enemy type names to Diablo WASM monster IDs.
  * Handles spawn level restrictions and monster difficulty scaling.
+ * Integrates with DungeonConfig for customizable monster pools.
  *
  * Monster IDs from devilution source (monstdat.cpp)
  */
+
+// Import DungeonConfig for customization (lazy import to avoid circular deps)
+let dungeonConfigInstance = null;
+function getDungeonConfig() {
+  if (!dungeonConfigInstance) {
+    try {
+      const { default: config } = require('./DungeonConfig');
+      dungeonConfigInstance = config;
+    } catch (e) {
+      // DungeonConfig not available, use defaults
+      return null;
+    }
+  }
+  return dungeonConfigInstance;
+}
 
 // Monster type IDs by category
 const MONSTER_IDS = {
@@ -179,8 +195,23 @@ function normalizeTypeName(type) {
  * @returns {string} Monster name
  */
 function getMonsterForLevel(baseType, level) {
-  const theme = getThemeForLevel(level);
-  const available = LEVEL_MONSTERS[theme] || LEVEL_MONSTERS.cathedral;
+  // Check DungeonConfig first for custom monster pool
+  const config = getDungeonConfig();
+  let available;
+
+  if (config) {
+    try {
+      available = config.getEffectiveMonsters(level);
+    } catch (e) {
+      // Fallback to defaults
+      available = null;
+    }
+  }
+
+  if (!available || available.length === 0) {
+    const theme = getThemeForLevel(level);
+    available = LEVEL_MONSTERS[theme] || LEVEL_MONSTERS.cathedral;
+  }
 
   // Try to find matching type in available monsters
   for (const monster of available) {
@@ -255,17 +286,81 @@ export function getBossForLevel(level) {
 
 /**
  * Get all available monsters for a level
+ * Uses DungeonConfig if available for custom monster pools
  * @param {number} level - Dungeon level
  * @returns {Array<{name, id}>} Available monsters
  */
 export function getAvailableMonsters(level) {
-  const theme = getThemeForLevel(level);
-  const available = LEVEL_MONSTERS[theme] || LEVEL_MONSTERS.cathedral;
+  // Check DungeonConfig first
+  const config = getDungeonConfig();
+  let available;
+
+  if (config) {
+    try {
+      available = config.getEffectiveMonsters(level);
+    } catch (e) {
+      available = null;
+    }
+  }
+
+  if (!available || available.length === 0) {
+    const theme = getThemeForLevel(level);
+    available = LEVEL_MONSTERS[theme] || LEVEL_MONSTERS.cathedral;
+  }
 
   return available.map(name => ({
     name,
     id: MONSTER_IDS[name],
-  }));
+  })).filter(m => m.id !== undefined);
+}
+
+/**
+ * Get monster density for a level (from DungeonConfig or default)
+ * @param {number} level - Dungeon level
+ * @returns {number} Density 0-1
+ */
+export function getMonsterDensity(level) {
+  const config = getDungeonConfig();
+  if (config) {
+    try {
+      return config.getEffectiveMonsterDensity(level);
+    } catch (e) {
+      // Fallback
+    }
+  }
+  // Default density increases with level
+  return 0.3 + (level * 0.02);
+}
+
+/**
+ * Get boss configuration for a level
+ * @param {number} level - Dungeon level
+ * @returns {Object|null} Boss config with monsterId, name, minionId, etc.
+ */
+export function getBossConfig(level) {
+  const config = getDungeonConfig();
+  if (config) {
+    try {
+      const boss = config.getBoss(level);
+      if (boss) {
+        return {
+          monsterId: MONSTER_IDS[boss.type] || boss.monsterId,
+          name: boss.name || boss.type,
+          type: boss.type,
+          minionId: boss.minions ? MONSTER_IDS[boss.minions] : null,
+          minionName: boss.minions,
+          minionCount: boss.minionCount || 4,
+          dialogue: boss.dialogue,
+          rewards: boss.rewards,
+        };
+      }
+    } catch (e) {
+      // Fallback
+    }
+  }
+
+  // Default bosses
+  return getBossForLevel(level);
 }
 
 /**
@@ -330,7 +425,9 @@ const MonsterMapper = {
   getMonsterID,
   convertPlacements,
   getBossForLevel,
+  getBossConfig,
   getAvailableMonsters,
+  getMonsterDensity,
   generateRandomSpawns,
   MONSTER_IDS,
   LEVEL_MONSTERS,

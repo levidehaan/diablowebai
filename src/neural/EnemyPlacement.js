@@ -2,6 +2,7 @@
  * Enemy Placement System
  *
  * AI-driven enemy spawning and placement at design time.
+ * Integrates with DungeonConfig for customizable monster pools, density, and difficulty.
  * Does NOT control real-time enemy behavior - only determines:
  * - Where enemies spawn
  * - What enemy types appear
@@ -11,6 +12,20 @@
 
 import NeuralConfig from './config';
 import { providerManager } from './providers';
+
+// Lazy import DungeonConfig to avoid circular dependencies
+let dungeonConfigInstance = null;
+function getDungeonConfig() {
+  if (!dungeonConfigInstance) {
+    try {
+      const { default: config } = require('./DungeonConfig');
+      dungeonConfigInstance = config;
+    } catch (e) {
+      return null;
+    }
+  }
+  return dungeonConfigInstance;
+}
 
 /**
  * Enemy types available in Diablo
@@ -194,21 +209,71 @@ function getBossForDifficulty(targetDifficulty) {
 }
 
 /**
+ * Get enemies for difficulty using DungeonConfig if available
+ */
+function getEnemiesForDifficultyWithConfig(targetDifficulty, level, variance = 1) {
+  const config = getDungeonConfig();
+
+  if (config && level) {
+    try {
+      const allowed = config.getEffectiveMonsters(level);
+      if (allowed && allowed.length > 0) {
+        // Filter by difficulty range
+        const minDiff = Math.max(1, targetDifficulty - variance);
+        const maxDiff = targetDifficulty + variance;
+
+        return allowed
+          .map(name => {
+            const enemy = Object.entries(ENEMY_TYPES).find(([key]) => key === name);
+            if (enemy) {
+              return { key: enemy[0], ...enemy[1] };
+            }
+            return null;
+          })
+          .filter(e => e && !e.boss && e.difficulty >= minDiff && e.difficulty <= maxDiff);
+      }
+    } catch (e) {
+      // Fallback
+    }
+  }
+
+  return getEnemiesForDifficulty(targetDifficulty, variance);
+}
+
+/**
+ * Get effective spawn count based on DungeonConfig density
+ */
+function getEffectiveSpawnCount(baseCount, level) {
+  const config = getDungeonConfig();
+  if (config && level) {
+    try {
+      const density = config.getEffectiveMonsterDensity(level);
+      // density is 0-1+, scale count accordingly
+      return Math.ceil(baseCount * density * 3); // density 0.33 = normal count
+    } catch (e) {
+      // Fallback
+    }
+  }
+  return baseCount;
+}
+
+/**
  * Mock placement generator for offline use
  */
 class MockPlacementGenerator {
   static generatePlacements(areaConfig, grid) {
     const placements = [];
-    const { difficulty, spawnPoints, bossArea } = areaConfig;
+    const { difficulty, spawnPoints, bossArea, level } = areaConfig;
 
     // Regular spawn points
     for (const spawn of (spawnPoints || [])) {
       const template = spawn.template || 'PATROL';
       const templateConfig = SPAWN_TEMPLATES[template];
-      const count = Math.floor(Math.random() * (templateConfig.maxCount - templateConfig.minCount + 1)) + templateConfig.minCount;
+      const baseCount = Math.floor(Math.random() * (templateConfig.maxCount - templateConfig.minCount + 1)) + templateConfig.minCount;
+      const count = getEffectiveSpawnCount(baseCount, level);
 
       const positions = calculateSpawnPositions(template, spawn.x, spawn.y, count, grid);
-      const enemyPool = getEnemiesForDifficulty(difficulty);
+      const enemyPool = getEnemiesForDifficultyWithConfig(difficulty, level);
 
       if (enemyPool.length === 0) continue;
 
@@ -234,9 +299,35 @@ class MockPlacementGenerator {
 
     // Boss placement
     if (bossArea) {
-      const boss = bossArea.bossType
-        ? ENEMY_TYPES[bossArea.bossType]
-        : getBossForDifficulty(difficulty + 2);
+      // Check DungeonConfig for boss override
+      const config = getDungeonConfig();
+      let boss = null;
+      let minionType = null;
+      let minionCount = 4;
+
+      if (config && level) {
+        try {
+          const bossConfig = config.getBoss(level);
+          if (bossConfig) {
+            boss = {
+              key: bossConfig.type,
+              id: ENEMY_TYPES[bossConfig.type]?.id,
+              difficulty: ENEMY_TYPES[bossConfig.type]?.difficulty || 10,
+              name: bossConfig.name || bossConfig.type,
+            };
+            minionType = bossConfig.minions;
+            minionCount = bossConfig.minionCount || 4;
+          }
+        } catch (e) {
+          // Fallback
+        }
+      }
+
+      if (!boss) {
+        boss = bossArea.bossType
+          ? ENEMY_TYPES[bossArea.bossType]
+          : getBossForDifficulty(difficulty + 2);
+      }
 
       if (boss) {
         const positions = calculateSpawnPositions('BOSS_ROOM', bossArea.x, bossArea.y, 1, grid);
@@ -252,8 +343,10 @@ class MockPlacementGenerator {
         });
 
         // Add minions around boss
-        const minionPositions = calculateSpawnPositions('BOSS_ROOM', bossArea.x, bossArea.y, 5, grid);
-        const minionPool = getEnemiesForDifficulty(difficulty);
+        const minionPositions = calculateSpawnPositions('BOSS_ROOM', bossArea.x, bossArea.y, minionCount + 1, grid);
+        const minionPool = minionType
+          ? [{ key: minionType, ...ENEMY_TYPES[minionType] }].filter(m => m.id)
+          : getEnemiesForDifficultyWithConfig(difficulty, level);
 
         for (let i = 1; i < minionPositions.length; i++) {
           const pos = minionPositions[i];
