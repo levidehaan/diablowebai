@@ -14,6 +14,7 @@
 import DUNParser from './DUNParser';
 import TileMapper from './TileMapper';
 import MonsterMapper from './MonsterMapper';
+import ObjectMapper from './ObjectMapper';
 import LevelValidator, { validateLevel, checkPath, analyzeAreas } from './LevelValidator';
 import CampaignConverter, { convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
 import ProceduralGenerator, { generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme, visualizeDungeon } from './ProceduralGenerator';
@@ -1457,7 +1458,609 @@ export const MOD_TOOLS = {
       }
     },
   },
+
+  // =====================================================
+  // ITEM AND OBJECT PLACEMENT TOOLS
+  // =====================================================
+
+  /**
+   * Place objects in a level
+   */
+  placeObjects: {
+    name: 'placeObjects',
+    description: 'Place objects (treasure, shrines, barrels, etc.) in a level',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file',
+        required: true,
+      },
+      placements: {
+        type: 'array',
+        description: 'Array of {x, y, type} placements. Types: barrel, chest, chest_large, shrine_*, torch, etc.',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      const { mpqReader, modifiedFiles } = context;
+      if (!mpqReader) {
+        return { success: false, error: 'No MPQ loaded' };
+      }
+
+      try {
+        // Get existing or modified version
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else {
+          const buffer = mpqReader.read(params.path);
+          if (!buffer) {
+            return { success: false, error: `File not found: ${params.path}` };
+          }
+          dunData = DUNParser.parse(buffer);
+        }
+
+        // Create objects layer if it doesn't exist
+        if (!dunData.objects) {
+          dunData.objects = DUNParser.createEmptySubLayer(dunData.width, dunData.height);
+          dunData.hasObjects = true;
+        }
+
+        // Convert and place objects
+        const converted = ObjectMapper.convertPlacements(params.placements);
+        let placed = 0;
+
+        for (const obj of converted) {
+          // Convert to sub-tile coordinates (2x resolution)
+          const sx = obj.x * 2;
+          const sy = obj.y * 2;
+
+          if (sy >= 0 && sy < dunData.objects.length &&
+              sx >= 0 && sx < dunData.objects[0].length) {
+            dunData.objects[sy][sx] = obj.objectId;
+            placed++;
+          }
+        }
+
+        // Store modified version
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+        });
+
+        const preview = DUNParser.visualize(dunData);
+
+        return {
+          success: true,
+          path: params.path,
+          objectsPlaced: placed,
+          totalPlacements: params.placements.length,
+          preview,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Place items (dropped loot) in a level
+   */
+  placeItems: {
+    name: 'placeItems',
+    description: 'Place items (gold, potions, weapons) on the ground in a level',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file',
+        required: true,
+      },
+      items: {
+        type: 'array',
+        description: 'Array of {x, y, itemId} items. ItemId is the game item identifier.',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      const { mpqReader, modifiedFiles } = context;
+      if (!mpqReader) {
+        return { success: false, error: 'No MPQ loaded' };
+      }
+
+      try {
+        // Get existing or modified version
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else {
+          const buffer = mpqReader.read(params.path);
+          if (!buffer) {
+            return { success: false, error: `File not found: ${params.path}` };
+          }
+          dunData = DUNParser.parse(buffer);
+        }
+
+        // Create items layer if it doesn't exist
+        if (!dunData.items) {
+          dunData.items = DUNParser.createEmptySubLayer(dunData.width, dunData.height);
+          dunData.hasItems = true;
+        }
+
+        // Place items
+        let placed = 0;
+        for (const item of params.items) {
+          const { x, y, itemId } = item;
+          // Convert to sub-tile coordinates (2x resolution)
+          const sx = x * 2;
+          const sy = y * 2;
+
+          if (sy >= 0 && sy < dunData.items.length &&
+              sx >= 0 && sx < dunData.items[0].length) {
+            dunData.items[sy][sx] = itemId;
+            placed++;
+          }
+        }
+
+        // Store modified version
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+        });
+
+        const preview = DUNParser.visualize(dunData);
+
+        return {
+          success: true,
+          path: params.path,
+          itemsPlaced: placed,
+          totalItems: params.items.length,
+          preview,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get available object types
+   */
+  getObjectTypes: {
+    name: 'getObjectTypes',
+    description: 'Get list of available object types for placement',
+    parameters: {
+      theme: {
+        type: 'string',
+        description: 'Optional theme to filter objects (cathedral, catacombs, caves, hell)',
+        required: false,
+      },
+      category: {
+        type: 'string',
+        description: 'Optional category to filter (containers, shrines, fountains, quest, decoration)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const summary = ObjectMapper.getObjectSummary();
+
+      let objects = [];
+      if (params.theme) {
+        objects = ObjectMapper.getObjectsForTheme(params.theme);
+      } else if (params.category) {
+        objects = summary[params.category] || [];
+      } else {
+        // Return all organized by category
+        return {
+          success: true,
+          categories: summary,
+          allObjects: Object.keys(ObjectMapper.OBJECT_IDS),
+        };
+      }
+
+      return {
+        success: true,
+        theme: params.theme,
+        category: params.category,
+        objects,
+        count: objects.length,
+      };
+    },
+  },
+
+  /**
+   * Auto-generate treasure placements
+   */
+  generateTreasure: {
+    name: 'generateTreasure',
+    description: 'Automatically generate treasure and object placements based on room layout',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file',
+        required: true,
+      },
+      theme: {
+        type: 'string',
+        description: 'Level theme for appropriate objects',
+        required: false,
+      },
+      density: {
+        type: 'number',
+        description: 'Object density (0.0-1.0, default 0.3)',
+        required: false,
+      },
+      seed: {
+        type: 'number',
+        description: 'Random seed for reproducible generation',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { mpqReader, modifiedFiles } = context;
+      if (!mpqReader) {
+        return { success: false, error: 'No MPQ loaded' };
+      }
+
+      try {
+        // Get existing or modified version
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else {
+          const buffer = mpqReader.read(params.path);
+          if (!buffer) {
+            return { success: false, error: `File not found: ${params.path}` };
+          }
+          dunData = DUNParser.parse(buffer);
+        }
+
+        // Find rooms (floor areas) in the level
+        const rooms = findRooms(dunData);
+
+        // Determine theme from path if not provided
+        let theme = params.theme;
+        if (!theme) {
+          if (params.path.includes('l1data')) theme = 'cathedral';
+          else if (params.path.includes('l2data')) theme = 'catacombs';
+          else if (params.path.includes('l3data')) theme = 'caves';
+          else if (params.path.includes('l4data')) theme = 'hell';
+          else theme = 'cathedral';
+        }
+
+        // Generate placements
+        const placements = ObjectMapper.generateTreasurePlacements(rooms, theme, {
+          density: params.density || 0.3,
+          seed: params.seed,
+        });
+
+        // Create objects layer if it doesn't exist
+        if (!dunData.objects) {
+          dunData.objects = DUNParser.createEmptySubLayer(dunData.width, dunData.height);
+          dunData.hasObjects = true;
+        }
+
+        // Place objects
+        const converted = ObjectMapper.convertPlacements(placements, theme);
+        let placed = 0;
+
+        for (const obj of converted) {
+          const sx = obj.x * 2;
+          const sy = obj.y * 2;
+
+          if (sy >= 0 && sy < dunData.objects.length &&
+              sx >= 0 && sx < dunData.objects[0].length) {
+            // Only place if cell is empty
+            if (dunData.objects[sy][sx] === 0) {
+              dunData.objects[sy][sx] = obj.objectId;
+              placed++;
+            }
+          }
+        }
+
+        // Store modified version
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+        });
+
+        const preview = DUNParser.visualize(dunData);
+
+        return {
+          success: true,
+          path: params.path,
+          theme,
+          roomsFound: rooms.length,
+          objectsGenerated: placements.length,
+          objectsPlaced: placed,
+          preview,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Clear all objects from a level
+   */
+  clearObjects: {
+    name: 'clearObjects',
+    description: 'Remove all objects from a level',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file',
+        required: true,
+      },
+      clearItems: {
+        type: 'boolean',
+        description: 'Also clear items layer (default false)',
+        required: false,
+      },
+      clearMonsters: {
+        type: 'boolean',
+        description: 'Also clear monsters layer (default false)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { mpqReader, modifiedFiles } = context;
+      if (!mpqReader) {
+        return { success: false, error: 'No MPQ loaded' };
+      }
+
+      try {
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else {
+          const buffer = mpqReader.read(params.path);
+          if (!buffer) {
+            return { success: false, error: `File not found: ${params.path}` };
+          }
+          dunData = DUNParser.parse(buffer);
+        }
+
+        const cleared = { objects: 0, items: 0, monsters: 0 };
+
+        // Clear objects
+        if (dunData.objects) {
+          for (let y = 0; y < dunData.objects.length; y++) {
+            for (let x = 0; x < dunData.objects[y].length; x++) {
+              if (dunData.objects[y][x] !== 0) {
+                cleared.objects++;
+                dunData.objects[y][x] = 0;
+              }
+            }
+          }
+        }
+
+        // Optionally clear items
+        if (params.clearItems && dunData.items) {
+          for (let y = 0; y < dunData.items.length; y++) {
+            for (let x = 0; x < dunData.items[y].length; x++) {
+              if (dunData.items[y][x] !== 0) {
+                cleared.items++;
+                dunData.items[y][x] = 0;
+              }
+            }
+          }
+        }
+
+        // Optionally clear monsters
+        if (params.clearMonsters && dunData.monsters) {
+          for (let y = 0; y < dunData.monsters.length; y++) {
+            for (let x = 0; x < dunData.monsters[y].length; x++) {
+              if (dunData.monsters[y][x] !== 0) {
+                cleared.monsters++;
+                dunData.monsters[y][x] = 0;
+              }
+            }
+          }
+        }
+
+        // Store modified version
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+        });
+
+        const preview = DUNParser.visualize(dunData);
+
+        return {
+          success: true,
+          path: params.path,
+          cleared,
+          preview,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Place a shrine at a location
+   */
+  placeShrine: {
+    name: 'placeShrine',
+    description: 'Place a specific shrine type at a location',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file',
+        required: true,
+      },
+      x: {
+        type: 'number',
+        description: 'X coordinate',
+        required: true,
+      },
+      y: {
+        type: 'number',
+        description: 'Y coordinate',
+        required: true,
+      },
+      shrineType: {
+        type: 'string',
+        description: 'Shrine type (e.g., mysterious, hidden, magical, enchanted, divine, etc.)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { mpqReader, modifiedFiles } = context;
+      if (!mpqReader) {
+        return { success: false, error: 'No MPQ loaded' };
+      }
+
+      try {
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else {
+          const buffer = mpqReader.read(params.path);
+          if (!buffer) {
+            return { success: false, error: `File not found: ${params.path}` };
+          }
+          dunData = DUNParser.parse(buffer);
+        }
+
+        // Create objects layer if it doesn't exist
+        if (!dunData.objects) {
+          dunData.objects = DUNParser.createEmptySubLayer(dunData.width, dunData.height);
+          dunData.hasObjects = true;
+        }
+
+        // Determine shrine type
+        let shrineName = 'shrine_mysterious';
+        if (params.shrineType) {
+          const typeName = params.shrineType.toLowerCase();
+          if (typeName.startsWith('shrine_')) {
+            shrineName = typeName;
+          } else {
+            shrineName = `shrine_${typeName}`;
+          }
+        }
+
+        const objectId = ObjectMapper.getObjectId(shrineName);
+        if (!objectId) {
+          return {
+            success: false,
+            error: `Unknown shrine type: ${shrineName}`,
+            availableShrines: Object.keys(ObjectMapper.OBJECT_IDS).filter(k => k.startsWith('shrine_')),
+          };
+        }
+
+        // Place shrine (2x resolution)
+        const sx = params.x * 2;
+        const sy = params.y * 2;
+
+        if (sy >= 0 && sy < dunData.objects.length &&
+            sx >= 0 && sx < dunData.objects[0].length) {
+          dunData.objects[sy][sx] = objectId;
+        } else {
+          return { success: false, error: 'Coordinates out of bounds' };
+        }
+
+        // Store modified version
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+        });
+
+        const preview = DUNParser.visualize(dunData);
+
+        return {
+          success: true,
+          path: params.path,
+          shrine: shrineName,
+          position: { x: params.x, y: params.y },
+          objectId,
+          preview,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
 };
+
+/**
+ * Find rooms (connected floor areas) in a DUN level
+ * @param {Object} dunData - Parsed DUN data
+ * @returns {Array} Array of room objects {x, y, width, height}
+ */
+function findRooms(dunData) {
+  const { width, height, baseTiles } = dunData;
+  const visited = Array(height).fill(null).map(() => Array(width).fill(false));
+  const rooms = [];
+
+  // Simple flood-fill to find connected floor areas
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      if (visited[y][x]) continue;
+
+      const tile = baseTiles[y][x];
+      // Check if floor tile (0 or low value typically floor)
+      if (tile === 0 || (tile > 0 && tile < 20)) {
+        const room = floodFillRoom(baseTiles, visited, x, y, width, height);
+        if (room.area >= 4) { // Minimum room size
+          rooms.push(room);
+        }
+      }
+    }
+  }
+
+  return rooms;
+}
+
+/**
+ * Flood fill to find room bounds
+ */
+function floodFillRoom(tiles, visited, startX, startY, maxWidth, maxHeight) {
+  const queue = [{ x: startX, y: startY }];
+  let minX = startX, maxX = startX;
+  let minY = startY, maxY = startY;
+  let area = 0;
+
+  while (queue.length > 0) {
+    const { x, y } = queue.shift();
+
+    if (x < 0 || x >= maxWidth || y < 0 || y >= maxHeight) continue;
+    if (visited[y][x]) continue;
+
+    const tile = tiles[y][x];
+    // Check if floor tile
+    if (tile !== 0 && (tile < 0 || tile >= 20)) continue;
+
+    visited[y][x] = true;
+    area++;
+
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+
+    // Add neighbors
+    queue.push({ x: x + 1, y });
+    queue.push({ x: x - 1, y });
+    queue.push({ x, y: y + 1 });
+    queue.push({ x, y: y - 1 });
+  }
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+    area,
+  };
+}
 
 /**
  * Convert glob pattern to regex
