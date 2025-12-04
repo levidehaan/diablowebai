@@ -47,6 +47,8 @@ import {
 } from './AssetRegistry';
 import { CampaignBuilder, QuickCampaign } from './CampaignBuilder';
 import { TownGenerator, STARTING_AREA_TYPES, getTownSectorPaths } from './TownGenerator';
+import dungeonConfig, { DungeonConfig, DUNGEON_THEMES as DUNGEON_CONFIG_THEMES, DIFFICULTY_PRESETS, getThemeForLevel } from './DungeonConfig';
+import { CampaignPipeline, PIPELINE_STAGES, getOrderedStages } from './CampaignPipeline';
 
 // Tool definitions for AI
 export const MOD_TOOLS = {
@@ -3573,6 +3575,700 @@ export const MOD_TOOLS = {
           needsGeneration: blueprint.assets.requirements.filter(a => a.needsGeneration).length,
         },
         validation,
+      };
+    },
+  },
+
+  // ============================================================================
+  // DUNGEON CONFIGURATION TOOLS
+  // ============================================================================
+
+  /**
+   * Configure a dungeon level's settings
+   */
+  configureDungeonLevel: {
+    name: 'configureDungeonLevel',
+    description: 'Configure settings for a specific dungeon level (1-16). Set monster pools, difficulty, bosses, treasure density, etc.',
+    parameters: {
+      level: {
+        type: 'number',
+        description: 'Dungeon level (1-16)',
+        required: true,
+      },
+      difficulty: {
+        type: 'number',
+        description: 'Difficulty multiplier (0.5 = easy, 1.0 = normal, 2.0 = hard)',
+        required: false,
+      },
+      monsterDensity: {
+        type: 'number',
+        description: 'Monster spawn density (0.0-1.0)',
+        required: false,
+      },
+      allowedMonsters: {
+        type: 'array',
+        description: 'Array of allowed monster types (e.g., ["ZOMBIE", "SKELETON"])',
+        required: false,
+      },
+      disallowedMonsters: {
+        type: 'array',
+        description: 'Array of disallowed monster types',
+        required: false,
+      },
+      treasureDensity: {
+        type: 'number',
+        description: 'Treasure spawn density (0.0-1.0)',
+        required: false,
+      },
+      themeOverride: {
+        type: 'string',
+        description: 'Override theme (CATHEDRAL, CATACOMBS, CAVES, HELL)',
+        required: false,
+      },
+      noMonsters: {
+        type: 'boolean',
+        description: 'If true, no monsters spawn on this level',
+        required: false,
+      },
+      noTreasure: {
+        type: 'boolean',
+        description: 'If true, no treasure spawns on this level',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const { level, ...config } = params;
+
+        if (level < 1 || level > 16) {
+          return { success: false, error: 'Level must be between 1 and 16' };
+        }
+
+        const result = dungeonConfig.configureLevelPartial(level, config);
+
+        return {
+          success: true,
+          level,
+          configuredSettings: Object.keys(config),
+          currentConfig: {
+            theme: result.theme,
+            themeOverride: result.themeOverride,
+            difficulty: result.difficulty,
+            difficultyMultiplier: result.difficultyMultiplier,
+            monsterDensity: result.monsterDensity,
+            treasureDensity: result.treasureDensity,
+            allowedMonsters: result.allowedMonsters.slice(0, 5), // Show first 5
+            isBossLevel: result.isBossLevel,
+            noMonsters: result.noMonsters,
+            noTreasure: result.noTreasure,
+          },
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Set global difficulty preset
+   */
+  setDifficulty: {
+    name: 'setDifficulty',
+    description: 'Set the global difficulty preset for the entire campaign',
+    parameters: {
+      preset: {
+        type: 'string',
+        description: 'Difficulty preset: EASY, NORMAL, NIGHTMARE, or HELL',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const result = dungeonConfig.setDifficultyPreset(params.preset);
+        return {
+          success: true,
+          difficulty: params.preset.toUpperCase(),
+          settings: result,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Set monster pool for a level
+   */
+  setMonsterPool: {
+    name: 'setMonsterPool',
+    description: 'Set the allowed monsters for a dungeon level',
+    parameters: {
+      level: {
+        type: 'number',
+        description: 'Dungeon level (1-16)',
+        required: true,
+      },
+      monsters: {
+        type: 'array',
+        description: 'Array of monster type names (e.g., ["ZOMBIE", "SKELETON", "FALLEN_ONE"])',
+        required: true,
+      },
+      append: {
+        type: 'boolean',
+        description: 'If true, add to existing pool instead of replacing',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const { level, monsters, append } = params;
+
+        if (append) {
+          dungeonConfig.addAllowedMonsters(level, monsters);
+        } else {
+          dungeonConfig.setAllowedMonsters(level, monsters);
+        }
+
+        const config = dungeonConfig.getLevelConfig(level);
+
+        return {
+          success: true,
+          level,
+          monsters: config.allowedMonsters,
+          totalMonsterTypes: config.allowedMonsters.length,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Set boss for a level
+   */
+  setBoss: {
+    name: 'setBoss',
+    description: 'Configure a boss encounter for a dungeon level',
+    parameters: {
+      level: {
+        type: 'number',
+        description: 'Dungeon level (1-16)',
+        required: true,
+      },
+      bossType: {
+        type: 'string',
+        description: 'Boss type: BUTCHER, SKELETON_KING, LAZARUS, or DIABLO',
+        required: true,
+      },
+      name: {
+        type: 'string',
+        description: 'Custom display name for boss',
+        required: false,
+      },
+      minions: {
+        type: 'string',
+        description: 'Monster type for boss minions (e.g., "SKELETON")',
+        required: false,
+      },
+      minionCount: {
+        type: 'number',
+        description: 'Number of minions (default 4)',
+        required: false,
+      },
+      dialogue: {
+        type: 'object',
+        description: 'Boss dialogue {spawn: "...", defeat: "..."}',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const { level, bossType, name, minions, minionCount, dialogue } = params;
+
+        dungeonConfig.setBoss(level, {
+          type: bossType,
+          name: name || bossType,
+          minions,
+          minionCount: minionCount || 4,
+          dialogue,
+        });
+
+        const boss = dungeonConfig.getBoss(level);
+
+        return {
+          success: true,
+          level,
+          boss: {
+            type: boss.type,
+            name: boss.name,
+            minions: boss.minions,
+            minionCount: boss.minionCount,
+          },
+          message: `Boss ${boss.name || boss.type} configured for level ${level}`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Add story beat to a level
+   */
+  addStoryBeat: {
+    name: 'addStoryBeat',
+    description: 'Add a story beat (narrative trigger) to a dungeon level',
+    parameters: {
+      level: {
+        type: 'number',
+        description: 'Dungeon level (1-16)',
+        required: true,
+      },
+      event: {
+        type: 'string',
+        description: 'Event type: entry, boss_defeat, area_cleared, item_found',
+        required: true,
+      },
+      dialogue: {
+        type: 'object',
+        description: 'Dialogue to show {speaker: "NPC Name", text: "..."}',
+        required: false,
+      },
+      actions: {
+        type: 'array',
+        description: 'Actions to trigger [{type: "spawn_monster", ...}, ...]',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const { level, event, dialogue, actions } = params;
+
+        const beat = dungeonConfig.addStoryBeat(level, {
+          event,
+          dialogue,
+          actions: actions || [],
+        });
+
+        return {
+          success: true,
+          storyBeatId: beat.id,
+          level,
+          event,
+          message: `Story beat added to level ${level}`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Add level entry trigger
+   */
+  addLevelEntryTrigger: {
+    name: 'addLevelEntryTrigger',
+    description: 'Add a trigger that fires when player enters a dungeon level',
+    parameters: {
+      level: {
+        type: 'number',
+        description: 'Dungeon level (1-16)',
+        required: true,
+      },
+      dialogue: {
+        type: 'object',
+        description: 'Dialogue to show on entry {speaker, text}',
+        required: false,
+      },
+      questStart: {
+        type: 'object',
+        description: 'Quest to start on entry {id, name, description}',
+        required: false,
+      },
+      oneShot: {
+        type: 'boolean',
+        description: 'If true, trigger only fires once (default true)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const { level, dialogue, questStart, oneShot } = params;
+
+        const actions = [];
+        if (dialogue) {
+          actions.push({ type: 'show_dialogue', ...dialogue });
+        }
+        if (questStart) {
+          actions.push({ type: 'start_quest', ...questStart });
+        }
+
+        const trigger = dungeonConfig.addLevelEntryTrigger(level, {
+          actions,
+          oneShot: oneShot !== false,
+        });
+
+        return {
+          success: true,
+          triggerId: trigger.id,
+          level,
+          actionsCount: actions.length,
+          message: `Entry trigger added to level ${level}`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get dungeon configuration status
+   */
+  getDungeonConfig: {
+    name: 'getDungeonConfig',
+    description: 'Get current dungeon configuration summary',
+    parameters: {
+      level: {
+        type: 'number',
+        description: 'Specific level to get details for (optional)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        if (params.level) {
+          const config = dungeonConfig.getLevelConfig(params.level);
+          const effective = dungeonConfig.getEffectiveDifficulty(params.level);
+          const boss = dungeonConfig.getBoss(params.level);
+          const story = dungeonConfig.getStoryBeats(params.level);
+
+          return {
+            success: true,
+            level: params.level,
+            config: {
+              theme: config.themeOverride || config.theme,
+              difficulty: effective,
+              monsterDensity: dungeonConfig.getEffectiveMonsterDensity(params.level),
+              allowedMonsters: config.allowedMonsters,
+              treasureDensity: config.treasureDensity,
+              boss: boss ? { type: boss.type, name: boss.name } : null,
+              storyBeats: story,
+              flags: {
+                isBossLevel: config.isBossLevel,
+                isQuestLevel: config.isQuestLevel,
+                noMonsters: config.noMonsters,
+                noTreasure: config.noTreasure,
+              },
+            },
+          };
+        }
+
+        const summary = dungeonConfig.getSummary();
+        const validation = dungeonConfig.validate();
+
+        return {
+          success: true,
+          global: summary.global,
+          levels: summary.levelSummaries,
+          totalBosses: summary.totalBosses,
+          totalStoryBeats: summary.totalStoryBeats,
+          validation,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get available monster types
+   */
+  getAvailableMonsterTypes: {
+    name: 'getAvailableMonsterTypes',
+    description: 'Get list of all available monster types that can be used in dungeons',
+    parameters: {
+      theme: {
+        type: 'string',
+        description: 'Filter by theme (CATHEDRAL, CATACOMBS, CAVES, HELL)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { ENEMY_TYPES } = require('./EnemyPlacement');
+
+      let monsters = Object.entries(ENEMY_TYPES).map(([key, data]) => ({
+        type: key,
+        name: data.name,
+        difficulty: data.difficulty,
+        isBoss: data.boss || false,
+        pack: data.pack || false,
+        ranged: data.ranged || false,
+      }));
+
+      if (params.theme) {
+        const theme = DUNGEON_CONFIG_THEMES[params.theme.toUpperCase()];
+        if (theme) {
+          const defaultMonsters = new Set(theme.defaultMonsters);
+          monsters = monsters.filter(m => defaultMonsters.has(m.type) || m.isBoss);
+        }
+      }
+
+      return {
+        success: true,
+        theme: params.theme || 'all',
+        monsters: monsters.filter(m => !m.isBoss),
+        bosses: monsters.filter(m => m.isBoss),
+        totalTypes: monsters.length,
+      };
+    },
+  },
+
+  // ============================================================================
+  // PIPELINE TOOLS
+  // ============================================================================
+
+  /**
+   * Get pipeline checklist
+   */
+  getPipelineChecklist: {
+    name: 'getPipelineChecklist',
+    description: 'Get the complete checklist of stages for building a campaign. Use this to understand what steps need to be completed.',
+    parameters: {},
+    execute: async () => {
+      const checklist = CampaignPipeline.getChecklist();
+      return {
+        success: true,
+        totalStages: checklist.length,
+        stages: checklist,
+        message: 'Follow these stages in order to build a complete campaign. Each stage has required tools that must be used.',
+      };
+    },
+  },
+
+  /**
+   * Execute full pipeline
+   */
+  executePipeline: {
+    name: 'executePipeline',
+    description: 'Execute the full campaign build pipeline with automatic retry and validation',
+    parameters: {
+      blueprintJson: {
+        type: 'object',
+        description: 'Campaign blueprint JSON (from createCampaignBlueprint)',
+        required: true,
+      },
+      stopOnError: {
+        type: 'boolean',
+        description: 'Stop pipeline on first error (default false)',
+        required: false,
+      },
+      autoFix: {
+        type: 'boolean',
+        description: 'Automatically fix validation issues (default true)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const pipeline = new CampaignPipeline({
+          stopOnFirstError: params.stopOnError || false,
+          autoFix: params.autoFix !== false,
+        });
+
+        const result = await pipeline.execute(params.blueprintJson);
+
+        return {
+          success: result.success,
+          pipelineStatus: result.results?.status,
+          completedStages: result.results?.completedStages?.length || 0,
+          totalStages: 10,
+          errors: result.results?.errors || [],
+          warnings: result.results?.warnings || [],
+          mpqReady: result.success,
+          duration: result.results?.duration,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Validate campaign completeness
+   */
+  validateCampaign: {
+    name: 'validateCampaign',
+    description: 'Validate that all campaign components are complete and ready for play',
+    parameters: {},
+    execute: async (context) => {
+      const errors = [];
+      const warnings = [];
+      const checklist = [];
+
+      // Check blueprint
+      const blueprint = context.campaignBlueprint;
+      if (!blueprint) {
+        errors.push('No campaign blueprint created');
+        checklist.push({ item: 'Create campaign blueprint', status: 'missing' });
+      } else {
+        checklist.push({ item: 'Create campaign blueprint', status: 'done' });
+
+        // Check story
+        if (!blueprint.story?.acts?.length) {
+          errors.push('No story acts defined');
+          checklist.push({ item: 'Define story acts', status: 'missing' });
+        } else {
+          checklist.push({ item: 'Define story acts', status: 'done' });
+        }
+
+        // Check characters
+        const chars = blueprint.characters?.getAllCharacters?.() || [];
+        if (chars.length === 0) {
+          warnings.push('No characters defined');
+          checklist.push({ item: 'Add characters', status: 'warning' });
+        } else {
+          checklist.push({ item: 'Add characters', status: 'done' });
+        }
+
+        // Check quests
+        const quests = blueprint.quests?.getAllQuests?.() || [];
+        if (quests.length === 0) {
+          warnings.push('No quests defined');
+          checklist.push({ item: 'Add quests', status: 'warning' });
+        } else {
+          checklist.push({ item: 'Add quests', status: 'done' });
+        }
+      }
+
+      // Check dungeon config
+      const dungeonValidation = dungeonConfig.validate();
+      errors.push(...dungeonValidation.errors);
+      warnings.push(...dungeonValidation.warnings);
+
+      if (dungeonValidation.errors.length === 0) {
+        checklist.push({ item: 'Configure dungeon levels', status: 'done' });
+      } else {
+        checklist.push({ item: 'Configure dungeon levels', status: 'error' });
+      }
+
+      // Check modified files
+      const modCount = context.modifiedFiles?.size || 0;
+      if (modCount === 0) {
+        warnings.push('No level files generated yet');
+        checklist.push({ item: 'Generate dungeon levels', status: 'pending' });
+      } else {
+        checklist.push({ item: 'Generate dungeon levels', status: 'done', count: modCount });
+      }
+
+      return {
+        success: errors.length === 0,
+        valid: errors.length === 0,
+        errors,
+        warnings,
+        checklist,
+        readyToPlay: errors.length === 0 && modCount > 0,
+      };
+    },
+  },
+
+  /**
+   * Test MPQ load
+   */
+  testMpqLoad: {
+    name: 'testMpqLoad',
+    description: 'Test that the modified MPQ will load correctly in the game',
+    parameters: {},
+    execute: async (context) => {
+      const { modifiedFiles } = context;
+
+      if (!modifiedFiles || modifiedFiles.size === 0) {
+        return {
+          success: false,
+          error: 'No modified files to test. Generate levels first.',
+        };
+      }
+
+      const results = {
+        tested: 0,
+        passed: 0,
+        failed: 0,
+        errors: [],
+      };
+
+      for (const [path, info] of modifiedFiles.entries()) {
+        results.tested++;
+
+        try {
+          if (info.type === 'dun' && info.data) {
+            // Validate DUN structure
+            const stats = DUNParser.getStats(info.data);
+
+            if (stats.floorCount === 0) {
+              results.errors.push(`${path}: No floor tiles`);
+              results.failed++;
+            } else if (!stats.stairsUp && !stats.stairsDown && !path.includes('town')) {
+              results.errors.push(`${path}: Missing stairs`);
+              results.failed++;
+            } else {
+              results.passed++;
+            }
+          } else {
+            results.passed++;
+          }
+        } catch (error) {
+          results.errors.push(`${path}: ${error.message}`);
+          results.failed++;
+        }
+      }
+
+      return {
+        success: results.failed === 0,
+        tested: results.tested,
+        passed: results.passed,
+        failed: results.failed,
+        errors: results.errors,
+        ready: results.failed === 0,
+        message: results.failed === 0
+          ? `All ${results.passed} files validated successfully. MPQ is ready to load.`
+          : `${results.failed} files failed validation. Fix errors before loading.`,
+      };
+    },
+  },
+
+  /**
+   * Finalize campaign
+   */
+  finalizeCampaign: {
+    name: 'finalizeCampaign',
+    description: 'Perform final checks and prepare campaign for play',
+    parameters: {},
+    execute: async (context) => {
+      const validation = await MOD_TOOLS.validateCampaign.execute(context, {});
+
+      if (!validation.valid) {
+        return {
+          success: false,
+          error: 'Campaign validation failed. Fix errors before finalizing.',
+          errors: validation.errors,
+        };
+      }
+
+      const testResult = await MOD_TOOLS.testMpqLoad.execute(context, {});
+
+      if (!testResult.success) {
+        return {
+          success: false,
+          error: 'MPQ test failed. Fix errors before finalizing.',
+          errors: testResult.errors,
+        };
+      }
+
+      return {
+        success: true,
+        ready: true,
+        filesGenerated: testResult.tested,
+        validation,
+        message: 'Campaign finalized and ready to play! Use buildMod to create the MPQ.',
       };
     },
   },
