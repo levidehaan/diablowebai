@@ -50,10 +50,12 @@ function testOffscreen() {
   }*/
 }
 
-async function do_load_game(api, audio, mpq, spawn) {
+async function do_load_game(api, audio, mpq, spawn, options = {}) {
   const fs = await api.fs;
+  const { isModded = false } = options;
+
   if (spawn && !mpq) {
-    await load_spawn(api, fs);
+    await load_spawn(api, fs, { isModded });
   }
 
   let context = null, offscreen = false;
@@ -142,7 +144,15 @@ async function do_load_game(api, audio, mpq, spawn) {
   });
 }
 
-export default function load_game(api, mpq, spawn) {
+/**
+ * Load and start the game
+ * @param {Object} api - Game API
+ * @param {ArrayBuffer} mpq - MPQ data (if loading directly)
+ * @param {boolean} spawn - Whether to load spawn.mpq
+ * @param {Object} options - Options
+ * @param {boolean} options.isModded - If true, skip MPQ size validation
+ */
+export default function load_game(api, mpq, spawn, options = {}) {
   const audio = init_sound();
-  return do_load_game(api, audio, mpq, spawn);
+  return do_load_game(api, audio, mpq, spawn, options);
 }
