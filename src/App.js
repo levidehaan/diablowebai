@@ -340,8 +340,9 @@ class App extends React.Component {
         modLoadFeedback: { status: 'loading', message: 'Starting modded game...' },
       });
 
-      // Start the game with the swapped MPQ
-      this.start();
+      // Start the game with the swapped MPQ - CRITICAL: pass isModded flag
+      // This tells load_spawn.js to skip the size validation check
+      this.start(null, { isModded: true });
 
       // After a short delay, update feedback (actual feedback would come from worker)
       setTimeout(() => {
@@ -364,6 +365,7 @@ class App extends React.Component {
    */
   buildAndPlayCampaign = async (campaign) => {
     console.log('[App] Building MPQ from campaign:', campaign.name);
+    const { activeWorld, campaignProgress } = this.state;
 
     try {
       this.setState({
@@ -402,6 +404,15 @@ class App extends React.Component {
       // Build the modified MPQ
       const modifiedMpq = writer.build();
       console.log(`[App] Built modified MPQ: ${modifiedMpq.length} bytes`);
+
+      // Set up AI game session for overlay (optional enhancement layer)
+      const session = new AIGameSession(campaign, activeWorld, campaignProgress);
+      session.start();
+
+      this.setState({
+        aiGameSession: session,
+        playingAICampaign: true,
+      });
 
       // Start game with modded MPQ
       await this.startModdedGame(modifiedMpq);
@@ -595,8 +606,10 @@ class App extends React.Component {
     }
   }
 
-  start(file) {
-    if (file && file.name.match(/\.sv$/i)) {
+  start(file, options = {}) {
+    const { isModded = false } = options;
+
+    if (file && file.name && file.name.match(/\.sv$/i)) {
       this.fs.then(fs => fs.upload(file)).then(() => {
         this.updateSaves();
       });
@@ -605,7 +618,7 @@ class App extends React.Component {
     if (this.state.show_saves) {
       return;
     }
-    if (file && !file.name.match(/\.mpq$/i)) {
+    if (file && file.name && !file.name.match(/\.mpq$/i)) {
       window.alert('Please select an MPQ file. If you downloaded the installer from GoG, you will need to install it on PC and use the MPQ file from the installation folder.');
       return;
     }
@@ -616,17 +629,17 @@ class App extends React.Component {
     document.removeEventListener("dragleave", this.onDragLeave, true);
     this.setState({dropping: 0});
 
-    const retail = !!(file && !file.name.match(/^spawn\.mpq$/i));
+    const retail = !!(file && file.name && !file.name.match(/^spawn\.mpq$/i));
     if (process.env.NODE_ENV === 'production') {
       ReactGA.event({
         category: 'Game',
-        action: retail ? 'Start Retail' : 'Start Shareware',
+        action: isModded ? 'Start Modded' : (retail ? 'Start Retail' : 'Start Shareware'),
       });
     }
 
     this.setState({loading: true, retail});
 
-    load_game(this, file, !retail).then(game => {
+    load_game(this, file, !retail, { isModded }).then(game => {
       this.game = game;
 
       document.addEventListener('mousemove', this.onMouseMove, true);
@@ -1021,6 +1034,7 @@ class App extends React.Component {
       return (
         <ModEditor
           filesystem={this.fs}
+          modifiedMpq={this.state.modifiedMpq}
           onClose={this.closeModEditor}
           onStartModded={this.startModdedGame}
         />
@@ -1106,19 +1120,11 @@ class App extends React.Component {
           <div className="neural-section">
             <div className="neural-section__title">Neural Augmentation</div>
 
-            {/* Play AI Campaign button - shown when campaign is ready */}
+            {/* Consolidated Build & Play button - builds MPQ and starts modded game */}
             {activeCampaign && (
-              <div className="startButton play-ai-btn" onClick={this.startAICampaign}>
-                Play AI Campaign
+              <div className="startButton build-play-btn primary-play" onClick={() => this.buildAndPlayCampaign(activeCampaign)}>
+                Build &amp; Play
                 <span className="campaign-name-badge">{activeCampaign.name}</span>
-              </div>
-            )}
-
-            {/* Build and Play button - converts campaign to MPQ and plays */}
-            {activeCampaign && (
-              <div className="startButton build-play-btn" onClick={() => this.buildAndPlayCampaign(activeCampaign)}>
-                Build &amp; Play Mod
-                <span className="mode-badge">MPQ</span>
               </div>
             )}
 

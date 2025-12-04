@@ -133,14 +133,29 @@ export class ModEditor extends Component {
     this.setState({ status: 'loading', loadingMessage: 'Looking for spawn.mpq...' });
 
     try {
+      // Check if we have a modifiedMpq prop (re-opening editor during modded game)
+      if (this.props.modifiedMpq) {
+        console.log('[ModEditor] Using modifiedMpq from props');
+        const buffer = this.props.modifiedMpq.buffer || this.props.modifiedMpq;
+        await this.loadMPQFromBuffer(buffer, 'spawn.mpq (modified)');
+        return;
+      }
+
       // First, try to get from filesystem prop
-      const fs = this.props.filesystem;
+      // Note: filesystem prop may be a Promise, so we need to await it
+      let fs = this.props.filesystem;
+      if (fs && typeof fs.then === 'function') {
+        // It's a Promise, await it
+        fs = await fs;
+        this.resolvedFilesystem = fs; // Store for later use
+      }
+
       if (fs && fs.files) {
         const spawnMpq = fs.files.get('spawn.mpq');
         if (spawnMpq) {
           // spawnMpq is a Uint8Array, get its underlying ArrayBuffer
           const buffer = spawnMpq.buffer || spawnMpq;
-          console.log('[ModEditor] Found spawn.mpq in filesystem');
+          console.log(`[ModEditor] Found spawn.mpq in filesystem (${spawnMpq.byteLength} bytes)`);
           await this.loadMPQFromBuffer(buffer, 'spawn.mpq');
           return;
         }
@@ -191,7 +206,11 @@ export class ModEditor extends Component {
       await this.loadMPQFromBuffer(response.data, 'spawn.mpq');
 
       // Also store in filesystem for future use
-      const fs = this.props.filesystem;
+      // Use the resolved filesystem if available
+      let fs = this.resolvedFilesystem || this.props.filesystem;
+      if (fs && typeof fs.then === 'function') {
+        fs = await fs;
+      }
       if (fs && fs.files) {
         const data = new Uint8Array(response.data);
         fs.files.set('spawn.mpq', data);
