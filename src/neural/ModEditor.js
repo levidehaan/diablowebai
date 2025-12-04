@@ -7,10 +7,13 @@
 
 import React, { Component } from 'react';
 import './ModEditor.scss';
+import './LevelPreview.scss';
 import { ModToolExecutor } from './ModTools';
 import DUNParser from './DUNParser';
 import { MPQWriter } from './MPQWriter';
 import { MpqReader } from '../api/savefile';
+import { LevelPreview, ASCIIPreview, MiniMap } from './LevelPreview';
+import { getThemeForLevel } from './TileMapper';
 
 // Operation status icons
 const STATUS_ICONS = {
@@ -39,6 +42,11 @@ export class ModEditor extends Component {
       previewPath: null,
       previewContent: null,
       previewStats: null,
+      previewDunData: null,
+      previewTheme: 'cathedral',
+      previewMode: 'visual', // 'visual', 'ascii', 'both'
+      showMonsters: true,
+      showItems: true,
 
       // Modified files
       modifiedFiles: [],
@@ -256,10 +264,36 @@ export class ModEditor extends Component {
   previewLevel = async (path) => {
     const result = await this.executeModTool('readLevel', { path });
     if (result.success) {
+      // Determine theme from path
+      let theme = 'cathedral';
+      if (path.includes('l1data')) theme = 'cathedral';
+      else if (path.includes('l2data')) theme = 'catacombs';
+      else if (path.includes('l3data')) theme = 'caves';
+      else if (path.includes('l4data')) theme = 'hell';
+
+      // Parse DUN data for visual preview
+      let dunData = null;
+      try {
+        // Check if we have the raw DUN data in executor
+        const modifiedFile = this.executor.getModifiedFiles().find(f => f.path === path);
+        if (modifiedFile) {
+          dunData = DUNParser.parse(modifiedFile.buffer);
+        } else if (this.executor.mpqReader) {
+          const buffer = this.executor.mpqReader.readFile(path);
+          if (buffer) {
+            dunData = DUNParser.parse(buffer);
+          }
+        }
+      } catch (e) {
+        console.warn('[ModEditor] Could not parse DUN for visual preview:', e);
+      }
+
       this.setState({
         previewPath: path,
         previewContent: result.preview,
         previewStats: result.stats,
+        previewDunData: dunData,
+        previewTheme: theme,
         selectedFile: path,
       });
     }
@@ -359,6 +393,11 @@ export class ModEditor extends Component {
       previewPath,
       previewContent,
       previewStats,
+      previewDunData,
+      previewTheme,
+      previewMode,
+      showMonsters,
+      showItems,
       modifiedFiles,
       status,
       error,
@@ -511,22 +550,118 @@ export class ModEditor extends Component {
 
           {/* Level Preview */}
           <div className="mod-editor-panel preview-panel">
-            <h3>Preview {previewPath && `- ${previewPath}`}</h3>
-            {previewContent ? (
-              <>
-                <pre className="level-preview">{previewContent}</pre>
-                {previewStats && (
-                  <div className="preview-stats">
-                    <span>Size: {previewStats.width}×{previewStats.height}</span>
-                    <span>Floors: {previewStats.floorCount}</span>
-                    <span>Walls: {previewStats.wallCount}</span>
-                    {previewStats.monsterCount > 0 && (
-                      <span>Monsters: {previewStats.monsterCount}</span>
-                    )}
-                    {previewStats.stairsUp > 0 && <span>Stairs: ↑{previewStats.stairsUp} ↓{previewStats.stairsDown}</span>}
+            <div className="preview-header">
+              <h3>Preview {previewPath && `- ${previewPath}`}</h3>
+              {previewDunData && (
+                <div className="preview-controls">
+                  <button
+                    className={`btn btn-small ${previewMode === 'visual' ? 'active' : ''}`}
+                    onClick={() => this.setState({ previewMode: 'visual' })}
+                  >
+                    Visual
+                  </button>
+                  <button
+                    className={`btn btn-small ${previewMode === 'ascii' ? 'active' : ''}`}
+                    onClick={() => this.setState({ previewMode: 'ascii' })}
+                  >
+                    ASCII
+                  </button>
+                  <button
+                    className={`btn btn-small ${previewMode === 'both' ? 'active' : ''}`}
+                    onClick={() => this.setState({ previewMode: 'both' })}
+                  >
+                    Both
+                  </button>
+                  <label className="preview-toggle">
+                    <input
+                      type="checkbox"
+                      checked={showMonsters}
+                      onChange={(e) => this.setState({ showMonsters: e.target.checked })}
+                    />
+                    Monsters
+                  </label>
+                  <label className="preview-toggle">
+                    <input
+                      type="checkbox"
+                      checked={showItems}
+                      onChange={(e) => this.setState({ showItems: e.target.checked })}
+                    />
+                    Items
+                  </label>
+                </div>
+              )}
+            </div>
+            {previewContent || previewDunData ? (
+              <div className="preview-content">
+                {/* Visual Preview */}
+                {(previewMode === 'visual' || previewMode === 'both') && previewDunData && (
+                  <div className="level-preview-container">
+                    <LevelPreview
+                      dunData={previewDunData}
+                      theme={previewTheme}
+                      showMonsters={showMonsters}
+                      showItems={showItems}
+                      maxWidth={350}
+                      maxHeight={350}
+                      onTileHover={(x, y, tileId) => {
+                        // Could show tile info in status bar
+                      }}
+                    />
+                    <div className="level-details">
+                      <h4>Level Details</h4>
+                      <div className="stat-row">
+                        <span className="stat-label">Theme</span>
+                        <span className="stat-value">{previewTheme}</span>
+                      </div>
+                      {previewStats && (
+                        <>
+                          <div className="stat-row">
+                            <span className="stat-label">Dimensions</span>
+                            <span className="stat-value">{previewStats.width}×{previewStats.height}</span>
+                          </div>
+                          <div className="stat-row">
+                            <span className="stat-label">Floors</span>
+                            <span className="stat-value">{previewStats.floorCount}</span>
+                          </div>
+                          <div className="stat-row">
+                            <span className="stat-label">Walls</span>
+                            <span className="stat-value">{previewStats.wallCount}</span>
+                          </div>
+                          {previewStats.monsterCount > 0 && (
+                            <div className="stat-row">
+                              <span className="stat-label">Monsters</span>
+                              <span className="stat-value">{previewStats.monsterCount}</span>
+                            </div>
+                          )}
+                          <div className="stat-row">
+                            <span className="stat-label">Stairs Up</span>
+                            <span className={`stat-value ${previewStats.stairsUp > 0 ? 'valid' : 'invalid'}`}>
+                              {previewStats.stairsUp > 0 ? '✓' : '✗'}
+                            </span>
+                          </div>
+                          <div className="stat-row">
+                            <span className="stat-label">Stairs Down</span>
+                            <span className={`stat-value ${previewStats.stairsDown > 0 ? 'valid' : 'invalid'}`}>
+                              {previewStats.stairsDown > 0 ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
-              </>
+                {/* ASCII Preview */}
+                {(previewMode === 'ascii' || previewMode === 'both') && previewContent && (
+                  <pre className="ascii-level-preview">{previewContent}</pre>
+                )}
+                {/* Mini map for 'both' mode */}
+                {previewMode === 'both' && previewDunData && (
+                  <div className="mini-map-container">
+                    <span className="mini-map-label">Mini Map</span>
+                    <MiniMap dunData={previewDunData} theme={previewTheme} size={80} />
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="empty-message">
                 Select a level file to preview

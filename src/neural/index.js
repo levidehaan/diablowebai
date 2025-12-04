@@ -35,6 +35,7 @@ export { default as DUNParser } from './DUNParser';
 export { MOD_TOOLS, ModToolExecutor } from './ModTools';
 export { ModEditor, ModEditorButton } from './ModEditor';
 export { MPQWriter } from './MPQWriter';
+export { LevelPreview, ASCIIPreview, MiniMap, THEME_COLORS as PREVIEW_THEME_COLORS } from './LevelPreview';
 export { default as LevelValidator, validateLevel, checkPath, analyzeAreas, VALIDATION_STATUS } from './LevelValidator';
 export { default as CampaignConverter, convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
 export { default as CELEncoder, parsePalette, createCEL, imageDataToCEL, spriteSheetToCEL, createCL2 } from './CELEncoder';
