@@ -26,6 +26,135 @@ import MonsterMapper from './MonsterMapper';
 import { validateLevel, checkPath, analyzeAreas } from './LevelValidator';
 
 /**
+ * Diablo Level Path Mapping
+ *
+ * IMPORTANT: Diablo's main dungeon levels (floors 1-16) are PROCEDURALLY GENERATED
+ * at runtime - they don't load from DUN files. DUN files are only used for:
+ * - Quest set pieces (Skeleton King's lair, Halls of the Blind, etc.)
+ * - Random room templates used by the procedural generator
+ * - Town sectors
+ *
+ * To get AI content into the game, we replace these quest areas.
+ *
+ * Actual DUN files in spawn.mpq (verified from ListFile.txt):
+ * - levels\l1data\: banner1/2, hero1/2, lv1mazea/b, rnd1-6, sklkng series, vile1/2
+ * - levels\l2data\: blind1/2, blood1-3, bonecha1/2, bonestr1/2
+ * - levels\l3data\: anvil, foulwatr, lair
+ * - levels\l4data\: diab1-4, vile1-3, warlord/2
+ * - levels\towndata\: sector1s-4s
+ */
+export const GAME_LEVEL_PATHS = {
+  // Cathedral (dlvl 1-4) quest areas - actual MPQ paths
+  cathedral: {
+    // Skeleton King's Lair - dlvl 3 quest
+    skeleton_king: 'levels\\l1data\\sklkng.dun',
+    skeleton_king_1: 'levels\\l1data\\sklkng1.dun',
+    skeleton_king_2: 'levels\\l1data\\sklkng2.dun',
+    skeleton_king_door: 'levels\\l1data\\sklkngdr.dun',
+    skeleton_king_closed: 'levels\\l1data\\skngdc.dun',
+    skeleton_king_open: 'levels\\l1data\\skngdo.dun',
+    // Maze templates
+    maze_a: 'levels\\l1data\\lv1mazea.dun',
+    maze_b: 'levels\\l1data\\lv1mazeb.dun',
+    // Random room templates (used by procedural generator)
+    rnd1: 'levels\\l1data\\rnd1.dun',
+    rnd2: 'levels\\l1data\\rnd2.dun',
+    rnd3: 'levels\\l1data\\rnd3.dun',
+    rnd4: 'levels\\l1data\\rnd4.dun',
+    rnd5: 'levels\\l1data\\rnd5.dun',
+    rnd6: 'levels\\l1data\\rnd6.dun',
+    // Hero quest rooms
+    hero1: 'levels\\l1data\\hero1.dun',
+    hero2: 'levels\\l1data\\hero2.dun',
+    // Ogden's Sign/Banner quest
+    banner1: 'levels\\l1data\\banner1.dun',
+    banner2: 'levels\\l1data\\banner2.dun',
+    // Archbishop Lazarus/Vile quest
+    vile1: 'levels\\l1data\\vile1.dun',
+    vile2: 'levels\\l1data\\vile2.dun',
+  },
+
+  // Catacombs (dlvl 5-8) quest areas
+  catacombs: {
+    // Halls of the Blind - dlvl 7 quest
+    blind1: 'levels\\l2data\\blind1.dun',
+    blind2: 'levels\\l2data\\blind2.dun',
+    // Valor/Blood quest
+    blood1: 'levels\\l2data\\blood1.dun',
+    blood2: 'levels\\l2data\\blood2.dun',
+    blood3: 'levels\\l2data\\blood3.dun',
+    // Bone Chamber
+    bonecha1: 'levels\\l2data\\bonecha1.dun',
+    bonecha2: 'levels\\l2data\\bonecha2.dun',
+    // Bone structures
+    bonestr1: 'levels\\l2data\\bonestr1.dun',
+    bonestr2: 'levels\\l2data\\bonestr2.dun',
+  },
+
+  // Caves (dlvl 9-12) quest areas
+  caves: {
+    // Anvil of Fury quest
+    anvil: 'levels\\l3data\\anvil.dun',
+    // Poisoned Water Supply
+    foulwatr: 'levels\\l3data\\foulwatr.dun',
+    // Lazarus Lair
+    lair: 'levels\\l3data\\lair.dun',
+  },
+
+  // Hell (dlvl 13-16) quest areas
+  hell: {
+    // Diablo's Lair - dlvl 16
+    diab1: 'levels\\l4data\\diab1.dun',
+    diab2a: 'levels\\l4data\\diab2a.dun',
+    diab2b: 'levels\\l4data\\diab2b.dun',
+    diab3a: 'levels\\l4data\\diab3a.dun',
+    diab3b: 'levels\\l4data\\diab3b.dun',
+    diab4a: 'levels\\l4data\\diab4a.dun',
+    diab4b: 'levels\\l4data\\diab4b.dun',
+    // Vile quest in Hell
+    vile1: 'levels\\l4data\\vile1.dun',
+    vile2: 'levels\\l4data\\vile2.dun',
+    vile3: 'levels\\l4data\\vile3.dun',
+    // Warlord of Blood quest
+    warlord: 'levels\\l4data\\warlord.dun',
+    warlord2: 'levels\\l4data\\warlord2.dun',
+  },
+
+  // Town sectors (used to build Tristram)
+  town: {
+    sector1s: 'levels\\towndata\\sector1s.dun',
+    sector2s: 'levels\\towndata\\sector2s.dun',
+    sector3s: 'levels\\towndata\\sector3s.dun',
+    sector4s: 'levels\\towndata\\sector4s.dun',
+  },
+};
+
+/**
+ * Get the appropriate game level path for an AI-generated level
+ * @param {string} theme - Level theme (cathedral, catacombs, caves, hell)
+ * @param {number} levelIndex - Level index in campaign (1-based)
+ * @param {string} levelType - Type of level (quest, random, etc.)
+ * @returns {string} Path to replace in the MPQ
+ */
+export function getGameLevelPath(theme, levelIndex = 1, levelType = 'quest') {
+  const themePaths = GAME_LEVEL_PATHS[theme] || GAME_LEVEL_PATHS.cathedral;
+  const pathKeys = Object.keys(themePaths);
+
+  // Map level index to available paths, cycling if needed
+  const pathIndex = (levelIndex - 1) % pathKeys.length;
+  const pathKey = pathKeys[pathIndex];
+
+  return themePaths[pathKey];
+}
+
+/**
+ * Get all available level paths for a theme
+ */
+export function getAvailableLevelPaths(theme) {
+  return GAME_LEVEL_PATHS[theme] || GAME_LEVEL_PATHS.cathedral;
+}
+
+/**
  * Convert an entire campaign to DUN files
  * @param {Object} campaign - AI campaign JSON
  * @param {Object} options - Conversion options
@@ -165,9 +294,8 @@ export function convertLevel(level, options = {}) {
     }
   }
 
-  // Generate path
-  const path = options.path ||
-    `levels/l${actIndex}data/ai_level_${levelIndex}.dun`;
+  // Generate path - use actual game level paths for proper loading
+  const path = options.path || getGameLevelPath(theme, levelIndex, options.levelType || 'quest');
 
   // Write to buffer
   const buffer = DUNParser.write(dunData);

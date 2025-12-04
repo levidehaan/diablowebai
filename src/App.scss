@@ -513,6 +513,48 @@ body, #root, .App {
   }
 }
 
+// Mod Loaded Indicator - visible during gameplay when mod is active
+.mod-loaded-indicator {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: linear-gradient(180deg, rgba(60, 40, 10, 0.95) 0%, rgba(40, 25, 5, 0.95) 100%);
+  border: 2px solid #ffd700;
+  border-radius: 20px;
+  z-index: 100;
+  animation: modIndicatorGlow 2s ease-in-out infinite;
+  box-shadow: 0 2px 10px rgba(255, 215, 0, 0.3);
+
+  .mod-icon {
+    font-size: 16px;
+  }
+
+  .mod-label {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    color: #ffd700;
+    text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+  }
+}
+
+@keyframes modIndicatorGlow {
+  0%, 100% {
+    box-shadow: 0 2px 10px rgba(255, 215, 0, 0.3);
+    border-color: #ffd700;
+  }
+  50% {
+    box-shadow: 0 2px 20px rgba(255, 215, 0, 0.6);
+    border-color: #ffed4a;
+  }
+}
+
 .startButton.ai-settings {
   display: flex;
   align-items: center;

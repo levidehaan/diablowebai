@@ -15,9 +15,9 @@ import DUNParser from './DUNParser';
 import TileMapper from './TileMapper';
 import MonsterMapper from './MonsterMapper';
 import ObjectMapper from './ObjectMapper';
-import LevelValidator, { validateLevel, checkPath, analyzeAreas } from './LevelValidator';
-import CampaignConverter, { convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
-import ProceduralGenerator, { generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme, visualizeDungeon } from './ProceduralGenerator';
+import { validateLevel, checkPath, analyzeAreas } from './LevelValidator';
+import { convertCampaign, convertLevel, getValidationReport, getGameLevelPath, GAME_LEVEL_PATHS } from './CampaignConverter';
+import { generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme, visualizeDungeon } from './ProceduralGenerator';
 import CELEncoder, { createCEL, createTestPatternCEL } from './CELEncoder';
 import questTriggerManager, { TRIGGER_TYPES, ACTION_TYPES, TriggerBuilder, ActionBuilder } from './QuestTriggers';
 import {
@@ -46,6 +46,7 @@ import {
   AssetSearch,
 } from './AssetRegistry';
 import { CampaignBuilder, QuickCampaign } from './CampaignBuilder';
+import { TownGenerator, STARTING_AREA_TYPES, getTownSectorPaths } from './TownGenerator';
 
 // Tool definitions for AI
 export const MOD_TOOLS = {
@@ -86,6 +87,198 @@ export const MOD_TOOLS = {
       } catch (error) {
         return { success: false, error: error.message };
       }
+    },
+  },
+
+  /**
+   * Get available game level paths that can be replaced
+   * IMPORTANT: Main dungeon levels (floors 1-16) are procedurally generated at runtime.
+   * Only quest areas, special set pieces, and room templates can be replaced via DUN files.
+   */
+  getGameLevelPaths: {
+    name: 'getGameLevelPaths',
+    description: 'Get actual game level paths that can be replaced with AI-generated content. Returns paths organized by theme (cathedral, catacombs, caves, hell, town).',
+    parameters: {
+      theme: {
+        type: 'string',
+        description: 'Filter by theme (cathedral, catacombs, caves, hell, town) or "all" for all themes',
+        required: false,
+      },
+    },
+    execute: async (context, params = {}) => {
+      try {
+        const theme = params.theme?.toLowerCase();
+
+        if (theme && theme !== 'all' && GAME_LEVEL_PATHS[theme]) {
+          return {
+            success: true,
+            theme,
+            paths: GAME_LEVEL_PATHS[theme],
+            note: 'These are actual game files that can be replaced. Main dungeon floors are procedurally generated and cannot be directly replaced.',
+          };
+        }
+
+        return {
+          success: true,
+          allPaths: GAME_LEVEL_PATHS,
+          themes: Object.keys(GAME_LEVEL_PATHS),
+          note: 'These are actual game files that can be replaced. Main dungeon floors are procedurally generated and cannot be directly replaced.',
+          examples: {
+            cathedral: 'levels\\l1data\\sklkng.dun - Skeleton King lair',
+            catacombs: 'levels\\l2data\\blind1.dun - Halls of the Blind',
+            caves: 'levels\\l3data\\anvil.dun - Anvil of Fury quest',
+            hell: 'levels\\l4data\\diab1.dun - Diablo\'s chamber',
+            town: 'levels\\towndata\\sector1s.dun - Town sector',
+          },
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get the suggested game path for a generated level
+   */
+  getSuggestedLevelPath: {
+    name: 'getSuggestedLevelPath',
+    description: 'Get a suggested game file path for AI-generated level based on theme and index',
+    parameters: {
+      theme: {
+        type: 'string',
+        description: 'Level theme: cathedral, catacombs, caves, hell, or town',
+        required: true,
+      },
+      levelIndex: {
+        type: 'number',
+        description: 'Level index (1-based) - determines which quest area to replace',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const theme = params.theme?.toLowerCase() || 'cathedral';
+        const levelIndex = params.levelIndex || 1;
+
+        const path = getGameLevelPath(theme, levelIndex, 'quest');
+
+        return {
+          success: true,
+          suggestedPath: path,
+          theme,
+          levelIndex,
+          note: 'This path points to an actual game file that will be replaced with your AI content.',
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Generate a custom starting area (town replacement)
+   * Creates 4 sector DUN files that replace Tristram with a custom hub
+   */
+  generateStartingArea: {
+    name: 'generateStartingArea',
+    description: 'Generate a custom starting area to replace the default town. Creates village, camp, ruins, sanctuary, outpost, or crypt starting locations.',
+    parameters: {
+      type: {
+        type: 'string',
+        description: 'Type of starting area: village, camp, ruins, sanctuary, outpost, or crypt',
+        required: true,
+      },
+      theme: {
+        type: 'string',
+        description: 'Visual theme for the area (default: matches type)',
+        required: false,
+      },
+      seed: {
+        type: 'number',
+        description: 'Random seed for reproducible generation',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      try {
+        // Validate type
+        const validTypes = Object.values(STARTING_AREA_TYPES);
+        const areaType = params.type?.toLowerCase();
+        if (!validTypes.includes(areaType)) {
+          return {
+            success: false,
+            error: `Invalid type: ${params.type}. Valid types: ${validTypes.join(', ')}`,
+          };
+        }
+
+        // Create generator
+        const generator = new TownGenerator({
+          type: areaType,
+          theme: params.theme || 'default',
+          seed: params.seed || Date.now(),
+        });
+
+        // Generate all town sectors
+        const sectors = generator.generateTown();
+        const results = [];
+
+        // Store each sector
+        for (const [path, dunData] of sectors) {
+          modifiedFiles.set(path, {
+            type: 'dun',
+            data: dunData,
+            modified: Date.now(),
+            isNew: true,
+          });
+
+          results.push({
+            path,
+            width: dunData.width,
+            height: dunData.height,
+          });
+        }
+
+        // Get previews
+        const previews = generator.getPreview();
+
+        return {
+          success: true,
+          type: areaType,
+          sectorsGenerated: results.length,
+          sectors: results,
+          paths: getTownSectorPaths(),
+          previews,
+          note: 'Town sectors generated. These will replace the default Tristram town when the mod is played.',
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get available starting area types
+   */
+  getStartingAreaTypes: {
+    name: 'getStartingAreaTypes',
+    description: 'Get list of available starting area types with descriptions',
+    parameters: {},
+    execute: async () => {
+      return {
+        success: true,
+        types: {
+          village: 'Traditional town with buildings, NPCs, and services - closest to original Tristram',
+          camp: 'Military encampment with tents, soldiers, and a wartime atmosphere',
+          ruins: 'Destroyed settlement with rubble, survivors, and a desolate feel',
+          sanctuary: 'Hidden refuge with enclosed spaces and a mystical atmosphere',
+          outpost: 'Frontier settlement with palisade walls and sparse services',
+          crypt: 'Underground starting area in a tomb/crypt setting',
+        },
+        sectorPaths: getTownSectorPaths(),
+        note: 'The starting area replaces all 4 town sectors. NPCs provide same services but with different visual layouts.',
+      };
     },
   },
 

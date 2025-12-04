@@ -1161,6 +1161,13 @@ class App extends React.Component {
             <FontAwesomeIcon icon={faCog} />
           </button>
         )}
+        {/* Mod Loaded Indicator - visible when playing with modded MPQ */}
+        {started && !error && this.state.modifiedMpq && (
+          <div className="mod-loaded-indicator" title="Playing with AI-generated content">
+            <span className="mod-icon">⚗️</span>
+            <span className="mod-label">MOD ACTIVE</span>
+          </div>
+        )}
         {/* Mod Editor button - visible when game is running */}
         {started && !error && (
           <ModEditorButton

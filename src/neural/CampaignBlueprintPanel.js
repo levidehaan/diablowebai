@@ -494,16 +494,35 @@ export class CampaignBlueprintPanel extends Component {
       );
     }
 
-    const validation = blueprint.validate();
+    // Safe access to methods that might not exist on plain objects
+    const validation = typeof blueprint.validate === 'function'
+      ? blueprint.validate()
+      : { valid: true, errors: [], warnings: [] };
+
+    const characterCount = typeof blueprint.characters?.getAllCharacters === 'function'
+      ? blueprint.characters.getAllCharacters().length
+      : (blueprint.characters?.npcs?.length || 0) +
+        (blueprint.characters?.enemies?.length || 0) +
+        (blueprint.characters?.bosses?.length || 0);
+
+    const questCount = typeof blueprint.quests?.getAllQuests === 'function'
+      ? blueprint.quests.getAllQuests().length
+      : (blueprint.quests?.main?.length || 0) + (blueprint.quests?.side?.length || 0);
+
+    const actCount = blueprint.story?.acts?.length || 0;
+    const locationCount = blueprint.world?.locations?.length ||
+      (blueprint.world?.locations instanceof Map ? blueprint.world.locations.size : 0);
 
     return (
       <div className="blueprint-overview">
         <div className="overview-header">
           <input
             type="text"
-            value={blueprint.story.title}
+            value={blueprint.story?.title || 'Untitled Campaign'}
             onChange={(e) => {
-              blueprint.story.title = e.target.value;
+              if (blueprint.story) {
+                blueprint.story.title = e.target.value;
+              }
               this.forceUpdate();
             }}
             className="campaign-title-input"
@@ -517,19 +536,19 @@ export class CampaignBlueprintPanel extends Component {
 
         <div className="overview-stats">
           <div className="stat-card">
-            <span className="stat-value">{blueprint.story.acts.length}</span>
+            <span className="stat-value">{actCount}</span>
             <span className="stat-label">Acts</span>
           </div>
           <div className="stat-card">
-            <span className="stat-value">{blueprint.world.locations.length}</span>
+            <span className="stat-value">{locationCount}</span>
             <span className="stat-label">Locations</span>
           </div>
           <div className="stat-card">
-            <span className="stat-value">{blueprint.characters.getAllCharacters().length}</span>
+            <span className="stat-value">{characterCount}</span>
             <span className="stat-label">Characters</span>
           </div>
           <div className="stat-card">
-            <span className="stat-value">{blueprint.quests.getAllQuests().length}</span>
+            <span className="stat-value">{questCount}</span>
             <span className="stat-label">Quests</span>
           </div>
         </div>
@@ -545,7 +564,7 @@ export class CampaignBlueprintPanel extends Component {
               ))}
             </div>
           )}
-          {validation.warnings.length > 0 && (
+          {validation.warnings?.length > 0 && (
             <div className="validation-warnings">
               {validation.warnings.map((warn, i) => (
                 <div key={i} className="validation-warning">{warn}</div>
