@@ -43,6 +43,49 @@ export { default as CampaignConverter, convertCampaign, convertLevel, getValidat
 export { default as CELEncoder, parsePalette, createCEL, imageDataToCEL, spriteSheetToCEL, createCL2 } from './CELEncoder';
 export { default as ProceduralGenerator, generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme } from './ProceduralGenerator';
 
+// Campaign Framework - Story-first campaign system
+export {
+  CampaignBlueprint,
+  StoryStructure,
+  Act,
+  Chapter,
+  Scene,
+  StoryMoment,
+  WorldDefinition,
+  Location,
+  CharacterRoster,
+  Character,
+  ItemDatabase,
+  Item,
+  QuestDatabase,
+  Quest,
+  QuestObjective,
+  AssetManifest,
+  AssetRequirement,
+  CompletionCriteria,
+  STRUCTURE_LEVELS,
+  SCENE_TYPES,
+  CHARACTER_ROLES,
+  LOCATION_TYPES,
+  DUNGEON_THEMES,
+  ASSET_CATEGORIES,
+  STORY_TEMPLATES,
+} from './CampaignBlueprint';
+
+export {
+  MONSTER_REGISTRY,
+  NPC_REGISTRY,
+  ITEM_REGISTRY,
+  OBJECT_REGISTRY,
+  TILE_REGISTRY,
+  AssetSearch,
+} from './AssetRegistry';
+
+export {
+  CampaignBuilder,
+  QuickCampaign,
+} from './CampaignBuilder';
+
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
 
@@ -76,6 +119,9 @@ export * from './LevelValidator';
 export * from './CampaignConverter';
 export * from './CELEncoder';
 export * from './ProceduralGenerator';
+export * from './CampaignBlueprint';
+export * from './AssetRegistry';
+export * from './CampaignBuilder';
 
 /**
  * Neural Augmentation System status
