@@ -16,10 +16,12 @@ import CompressMpq from './mpqcmp';
 // Neural Augmentation System
 import { AIConfigPanel, loadSavedConfig, needsConfiguration, providerManager, CampaignManager, CharacterCreator } from './neural';
 import { AIGameSession, AIGameOverlay } from './neural/AIGameSession';
+import { ModEditor, ModEditorButton, MPQWriter, DUNParser, convertCampaign } from './neural';
 import './neural/AIConfigPanel.scss';
 import './neural/CampaignManager.scss';
 import './neural/CharacterCreator.scss';
 import './neural/AIGameSession.scss';
+import './neural/ModEditor.scss';
 
 import Peer from 'peerjs';
 
@@ -123,6 +125,10 @@ class App extends React.Component {
     // AI Game Session state
     aiGameSession: null,
     playingAICampaign: false,
+    // Mod Editor state
+    showModEditor: false,
+    modifiedMpq: null,
+    modLoadFeedback: null,
   };
   cursorPos = {x: 0, y: 0};
 
@@ -291,6 +297,146 @@ class App extends React.Component {
     console.log('[App] Character saved:', characterData.name);
     // Character is saved to IndexedDB, can be used in campaigns
   }
+
+  // ========== Mod Editor and MPQ Swap Methods ==========
+
+  /**
+   * Open the Mod Editor UI
+   */
+  openModEditor = () => {
+    this.setState({ showModEditor: true });
+  }
+
+  /**
+   * Close the Mod Editor UI
+   */
+  closeModEditor = () => {
+    this.setState({ showModEditor: false });
+  }
+
+  /**
+   * Start game with a modified MPQ
+   * This is the critical swap mechanism - the MPQ must be replaced BEFORE game init
+   * @param {Uint8Array} modifiedMpqData - The modified MPQ data
+   */
+  startModdedGame = async (modifiedMpqData) => {
+    console.log('[App] Starting game with modded MPQ...');
+
+    try {
+      const fs = await this.fs;
+
+      // Store original for restoration if needed
+      this.originalSpawnMpq = fs.files.get('spawn.mpq');
+
+      // THE CRITICAL SWAP - must happen before game init
+      fs.files.set('spawn.mpq', modifiedMpqData);
+
+      console.log('[App] MPQ swapped successfully, starting game...');
+
+      // Store reference to modified MPQ
+      this.setState({
+        modifiedMpq: modifiedMpqData,
+        showModEditor: false,
+        modLoadFeedback: { status: 'loading', message: 'Starting modded game...' },
+      });
+
+      // Start the game with the swapped MPQ
+      this.start();
+
+      // After a short delay, update feedback (actual feedback would come from worker)
+      setTimeout(() => {
+        this.setState({
+          modLoadFeedback: { status: 'loaded', message: 'Mod loaded successfully!' },
+        });
+      }, 2000);
+
+    } catch (error) {
+      console.error('[App] Failed to start modded game:', error);
+      this.setState({
+        modLoadFeedback: { status: 'error', message: error.message },
+      });
+    }
+  }
+
+  /**
+   * Build modified MPQ from campaign and start game
+   * @param {Object} campaign - Campaign JSON data
+   */
+  buildAndPlayCampaign = async (campaign) => {
+    console.log('[App] Building MPQ from campaign:', campaign.name);
+
+    try {
+      this.setState({
+        modLoadFeedback: { status: 'building', message: 'Converting campaign to levels...' },
+      });
+
+      // Convert campaign to DUN files
+      const conversionResult = convertCampaign(campaign, { autoFix: true });
+
+      if (!conversionResult.success) {
+        throw new Error(`Campaign conversion failed: ${conversionResult.errors.join(', ')}`);
+      }
+
+      console.log(`[App] Converted ${conversionResult.levels.length} levels`);
+
+      this.setState({
+        modLoadFeedback: { status: 'building', message: 'Building MPQ archive...' },
+      });
+
+      // Get the original spawn.mpq
+      const fs = await this.fs;
+      const originalMpq = fs.files.get('spawn.mpq');
+
+      if (!originalMpq) {
+        throw new Error('No spawn.mpq found - cannot build mod');
+      }
+
+      // Create MPQ writer and add converted files
+      const writer = new MPQWriter(originalMpq.buffer || originalMpq);
+
+      for (const [path, buffer] of conversionResult.files) {
+        writer.setFile(path, buffer);
+        console.log(`[App] Added to MPQ: ${path} (${buffer.length} bytes)`);
+      }
+
+      // Build the modified MPQ
+      const modifiedMpq = writer.build();
+      console.log(`[App] Built modified MPQ: ${modifiedMpq.length} bytes`);
+
+      // Start game with modded MPQ
+      await this.startModdedGame(modifiedMpq);
+
+    } catch (error) {
+      console.error('[App] Failed to build campaign:', error);
+      this.setState({
+        modLoadFeedback: { status: 'error', message: error.message },
+      });
+    }
+  }
+
+  /**
+   * Restore original spawn.mpq (if modified)
+   */
+  restoreOriginalMpq = async () => {
+    if (this.originalSpawnMpq) {
+      const fs = await this.fs;
+      fs.files.set('spawn.mpq', this.originalSpawnMpq);
+      this.setState({
+        modifiedMpq: null,
+        modLoadFeedback: null,
+      });
+      console.log('[App] Restored original spawn.mpq');
+    }
+  }
+
+  /**
+   * Get filesystem reference for ModEditor
+   */
+  getFilesystem = async () => {
+    return await this.fs;
+  }
+
+  // ========== End Mod Editor Methods ==========
 
   onDrop = e => {
     const file = getDropFile(e);
@@ -831,7 +977,7 @@ class App extends React.Component {
 
   // Render AI modals separately - these need to be outside BodyV for pointer-events to work
   renderAIModals() {
-    const {showAIConfig, aiConfig, showCampaignManager, showCharacterCreator, activeCampaign} = this.state;
+    const {showAIConfig, aiConfig, showCampaignManager, showCharacterCreator, showModEditor, activeCampaign} = this.state;
 
     if (showAIConfig) {
       return (
@@ -871,14 +1017,24 @@ class App extends React.Component {
       );
     }
 
+    if (showModEditor) {
+      return (
+        <ModEditor
+          filesystem={this.fs}
+          onClose={this.closeModEditor}
+          onStartModded={this.startModdedGame}
+        />
+      );
+    }
+
     return null;
   }
 
   renderUi() {
-    const {started, loading, error, progress, has_spawn, save_names, show_saves, compress, showAIConfig, showCampaignManager, showCharacterCreator, activeCampaign} = this.state;
+    const {started, loading, error, progress, has_spawn, save_names, show_saves, compress, showAIConfig, showCampaignManager, showCharacterCreator, showModEditor, activeCampaign} = this.state;
 
     // AI modals are rendered separately via renderAIModals() outside of BodyV
-    if (showAIConfig || showCampaignManager || showCharacterCreator) {
+    if (showAIConfig || showCampaignManager || showCharacterCreator || showModEditor) {
       return null;
     }
 
@@ -958,6 +1114,14 @@ class App extends React.Component {
               </div>
             )}
 
+            {/* Build and Play button - converts campaign to MPQ and plays */}
+            {activeCampaign && (
+              <div className="startButton build-play-btn" onClick={() => this.buildAndPlayCampaign(activeCampaign)}>
+                Build &amp; Play Mod
+                <span className="mode-badge">MPQ</span>
+              </div>
+            )}
+
             <div className="startButton campaign-btn" onClick={this.openCampaignManager}>
               {activeCampaign ? 'Change Campaign' : 'AI Campaigns'}
               {activeCampaign && <span className="mode-badge">Ready</span>}
@@ -965,11 +1129,22 @@ class App extends React.Component {
             <div className="startButton character-btn" onClick={this.openCharacterCreator}>
               Character Creator
             </div>
+            <div className="startButton mod-editor-btn" onClick={this.openModEditor}>
+              Mod Editor
+              {this.state.modifiedMpq && <span className="mode-badge">Modified</span>}
+            </div>
             <div className="startButton ai-settings" onClick={this.openAISettings}>
               <FontAwesomeIcon icon={faCog} /> AI Settings
               {this.state.aiConfig?.mockMode && <span className="mode-badge">Mock Mode</span>}
               {this.state.aiConfig?.provider && <span className="mode-badge">{this.state.aiConfig.provider}</span>}
             </div>
+
+            {/* Mod Load Feedback */}
+            {this.state.modLoadFeedback && (
+              <div className={`mod-feedback mod-feedback--${this.state.modLoadFeedback.status}`}>
+                {this.state.modLoadFeedback.message}
+              </div>
+            )}
           </div>
         </div>
       );
@@ -985,6 +1160,13 @@ class App extends React.Component {
           <button className="ai-settings-btn" onClick={this.openAISettings} title="AI Settings">
             <FontAwesomeIcon icon={faCog} />
           </button>
+        )}
+        {/* Mod Editor button - visible when game is running */}
+        {started && !error && (
+          <ModEditorButton
+            onClick={this.openModEditor}
+            hasModifications={!!this.state.modifiedMpq}
+          />
         )}
         <div className="touch-ui touch-mods">
           <div className={classNames("touch-button", "touch-button-0", {active: this.touchMods[0]})} ref={this.setTouch0}/>

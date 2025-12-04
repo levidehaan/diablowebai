@@ -1,0 +1,224 @@
+/**
+ * Level Preview Styles
+ */
+
+.level-preview {
+  position: relative;
+  display: inline-block;
+  background: #1a1510;
+  border: 1px solid #4a3a2a;
+  border-radius: 4px;
+  padding: 8px;
+
+  &-canvas {
+    display: block;
+    cursor: crosshair;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  &-info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 10px;
+    color: #8a7a6a;
+
+    .level-size {
+      font-weight: bold;
+    }
+
+    .hover-pos {
+      font-family: monospace;
+    }
+
+    .zoom-level {
+      color: #6a8a6a;
+    }
+  }
+}
+
+.ascii-preview {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0;
+  background: #0a0a0a;
+  color: #8a8a8a;
+  padding: 8px;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  overflow: auto;
+  max-height: 300px;
+  white-space: pre;
+
+  &.large {
+    font-size: 10px;
+  }
+
+  &.small {
+    font-size: 6px;
+  }
+}
+
+.mini-map {
+  display: block;
+  border: 1px solid #3a3a3a;
+  border-radius: 2px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+// Preview in Mod Editor
+.mod-editor {
+  .level-preview-container {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+
+    .level-preview {
+      flex-shrink: 0;
+    }
+
+    .level-details {
+      flex: 1;
+      min-width: 200px;
+
+      h4 {
+        margin: 0 0 8px 0;
+        color: #d4a85c;
+        font-size: 14px;
+      }
+
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        border-bottom: 1px solid #2a2520;
+        font-size: 12px;
+
+        .stat-label {
+          color: #8a7a6a;
+        }
+
+        .stat-value {
+          color: #c4b090;
+          font-family: monospace;
+
+          &.valid {
+            color: #6a8a6a;
+          }
+
+          &.invalid {
+            color: #a06060;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Preview comparison view
+.preview-comparison {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+
+  .preview-item {
+    text-align: center;
+
+    .preview-label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 11px;
+      color: #8a7a6a;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+  }
+}
+
+// Animated preview (for procedural generation feedback)
+.preview-generating {
+  position: relative;
+
+  &::after {
+    content: 'Generating...';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: #d4a85c;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 12px;
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  .level-preview-canvas {
+    opacity: 0.5;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+// Tile info tooltip
+.tile-tooltip {
+  position: absolute;
+  background: rgba(26, 21, 16, 0.95);
+  border: 1px solid #4a3a2a;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #c4b090;
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+
+  .tile-pos {
+    font-family: monospace;
+    color: #8a7a6a;
+  }
+
+  .tile-type {
+    font-weight: bold;
+    color: #d4a85c;
+    margin-left: 8px;
+  }
+
+  .tile-id {
+    color: #6a8a6a;
+    margin-left: 4px;
+    font-family: monospace;
+  }
+}
+
+// Theme color legend
+.theme-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 10px;
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    .color-swatch {
+      width: 12px;
+      height: 12px;
+      border: 1px solid #3a3a3a;
+      border-radius: 2px;
+    }
+
+    .legend-label {
+      color: #8a7a6a;
+    }
+  }
+}

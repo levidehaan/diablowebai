@@ -637,5 +637,69 @@ body, #root, .App {
       transform: translateY(-50%);
       font-size: 8px;
     }
+
+    &.build-play-btn {
+      background: linear-gradient(180deg, #1a3a2a 0%, #0a2a1a 100%);
+      border: 1px solid #3a8b4a;
+      color: #6aff6a;
+
+      &:hover {
+        background: linear-gradient(180deg, #2a4a3a 0%, #1a3a2a 100%);
+        border-color: #5aab6a;
+        box-shadow: 0 0 10px rgba(106, 255, 106, 0.3);
+      }
+    }
+
+    &.mod-editor-btn {
+      background: linear-gradient(180deg, #2a2520 0%, #1a1510 100%);
+      border: 1px solid #6a5a4a;
+      color: #c4a080;
+
+      &:hover {
+        background: linear-gradient(180deg, #3a3530 0%, #2a2520 100%);
+        border-color: #8a7a6a;
+        box-shadow: 0 0 10px rgba(196, 160, 128, 0.2);
+      }
+    }
+  }
+
+  // Mod Load Feedback
+  .mod-feedback {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    text-align: center;
+
+    &--building {
+      background: rgba(255, 215, 0, 0.1);
+      border: 1px solid #6a5500;
+      color: #ffd700;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    &--loading {
+      background: rgba(100, 100, 255, 0.1);
+      border: 1px solid #4a4a8a;
+      color: #8888ff;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    &--loaded {
+      background: rgba(100, 255, 100, 0.1);
+      border: 1px solid #4a8a4a;
+      color: #88ff88;
+    }
+
+    &--error {
+      background: rgba(255, 100, 100, 0.1);
+      border: 1px solid #8a4a4a;
+      color: #ff8888;
+    }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
   }
 }

@@ -231,6 +231,98 @@ export class MpqReader {
       return output;
     }
   }
+
+  /**
+   * Get list of files from (listfile) if present
+   * @returns {string[]} Array of file paths, or empty if no listfile
+   */
+  listFiles() {
+    try {
+      const listfile = this.read('(listfile)');
+      if (!listfile) {
+        // No listfile - return empty but try common Diablo paths
+        return this.getKnownFilePaths();
+      }
+
+      // Parse listfile (newline-separated file paths)
+      const text = new TextDecoder().decode(listfile);
+      const files = text.split(/[\r\n]+/).filter(f => f.trim().length > 0);
+      return files;
+    } catch (error) {
+      console.warn('[MpqReader] Failed to read listfile:', error);
+      return this.getKnownFilePaths();
+    }
+  }
+
+  /**
+   * Get known Diablo file paths to try
+   * Used when no listfile is present
+   */
+  getKnownFilePaths() {
+    const paths = [];
+
+    // Level data files
+    const levelTypes = ['l1', 'l2', 'l3', 'l4'];
+    const dunFiles = ['skngdo.dun', 'banner1.dun', 'banner2.dun', 'blood1.dun', 'blood2.dun',
+                      'blind1.dun', 'blind2.dun', 'diab1.dun', 'diab2a.dun', 'diab2b.dun',
+                      'diab3a.dun', 'diab3b.dun', 'diab4a.dun', 'diab4b.dun', 'vile1.dun', 'vile2.dun'];
+
+    for (const lt of levelTypes) {
+      paths.push(`levels/${lt}data/${lt}.dun`);
+      for (const dun of dunFiles) {
+        paths.push(`levels/${lt}data/${dun}`);
+      }
+      paths.push(`levels/${lt}data/${lt}.min`);
+      paths.push(`levels/${lt}data/${lt}.til`);
+      paths.push(`levels/${lt}data/${lt}.sol`);
+      paths.push(`levels/${lt}data/${lt}s.cel`);
+    }
+
+    // Town data
+    paths.push('levels/towndata/town.dun');
+    paths.push('levels/towndata/town.min');
+    paths.push('levels/towndata/town.til');
+    paths.push('levels/towndata/town.sol');
+    paths.push('levels/towndata/towns.cel');
+
+    // Palette files
+    paths.push('levels/l1data/l1.pal');
+    paths.push('levels/l2data/l2.pal');
+    paths.push('levels/l3data/l3.pal');
+    paths.push('levels/l4data/l4.pal');
+    paths.push('levels/towndata/town.pal');
+
+    // Filter to only existing files
+    return paths.filter(p => this.fileIndex(p) != null);
+  }
+
+  /**
+   * Check if a file exists in the archive
+   * @param {string} name - File path
+   * @returns {boolean}
+   */
+  hasFile(name) {
+    return this.fileIndex(name) != null;
+  }
+
+  /**
+   * Get info about a file without reading it
+   * @param {string} name - File path
+   * @returns {Object|null} File info or null
+   */
+  getFileInfo(name) {
+    const index = this.fileIndex(name);
+    if (index == null) {
+      return null;
+    }
+    const block = this.hashTable[index * 4 + 3];
+    return {
+      filePos: this.blockTable[block * 4],
+      compressedSize: this.blockTable[block * 4 + 1],
+      fileSize: this.blockTable[block * 4 + 2],
+      flags: this.blockTable[block * 4 + 3],
+    };
+  }
 }
 
 function getPassword(name) {

@@ -31,6 +31,60 @@ export { default as GameStorage } from './GameStorage';
 export { default as WASMBridge } from './WASMBridge';
 export { default as TileMapper } from './TileMapper';
 export { default as MonsterMapper } from './MonsterMapper';
+export { default as DUNParser } from './DUNParser';
+export { default as ObjectMapper, OBJECT_IDS, getObjectId, getObjectName, getObjectsForTheme, generateTreasurePlacements } from './ObjectMapper';
+export { default as questTriggerManager, QuestTriggerManager, Trigger, TriggerBuilder, ActionBuilder, TRIGGER_TYPES, ACTION_TYPES } from './QuestTriggers';
+export { MOD_TOOLS, ModToolExecutor } from './ModTools';
+export { ModEditor, ModEditorButton } from './ModEditor';
+export { MPQWriter } from './MPQWriter';
+export { LevelPreview, ASCIIPreview, MiniMap, THEME_COLORS as PREVIEW_THEME_COLORS } from './LevelPreview';
+export { default as LevelValidator, validateLevel, checkPath, analyzeAreas, VALIDATION_STATUS } from './LevelValidator';
+export { default as CampaignConverter, convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
+export { default as CELEncoder, parsePalette, createCEL, imageDataToCEL, spriteSheetToCEL, createCL2 } from './CELEncoder';
+export { default as ProceduralGenerator, generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme } from './ProceduralGenerator';
+
+// Campaign Framework - Story-first campaign system
+export {
+  CampaignBlueprint,
+  StoryStructure,
+  Act,
+  Chapter,
+  Scene,
+  StoryMoment,
+  WorldDefinition,
+  Location,
+  CharacterRoster,
+  Character,
+  ItemDatabase,
+  Item,
+  QuestDatabase,
+  Quest,
+  QuestObjective,
+  AssetManifest,
+  AssetRequirement,
+  CompletionCriteria,
+  STRUCTURE_LEVELS,
+  SCENE_TYPES,
+  CHARACTER_ROLES,
+  LOCATION_TYPES,
+  DUNGEON_THEMES,
+  ASSET_CATEGORIES,
+  STORY_TEMPLATES,
+} from './CampaignBlueprint';
+
+export {
+  MONSTER_REGISTRY,
+  NPC_REGISTRY,
+  ITEM_REGISTRY,
+  OBJECT_REGISTRY,
+  TILE_REGISTRY,
+  AssetSearch,
+} from './AssetRegistry';
+
+export {
+  CampaignBuilder,
+  QuickCampaign,
+} from './CampaignBuilder';
 
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
@@ -40,6 +94,12 @@ export { AIConfigPanel, AISettingsButton, loadSavedConfig, saveConfig, needsConf
 
 // Export Campaign Manager UI components
 export { CampaignManager, SaveGameButton, QuickExportButton } from './CampaignManager';
+
+// Export Campaign Blueprint UI
+export { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
+
+// Export Asset Generator Adapter for NanoBanana integration
+export { AssetGeneratorAdapter, createAssetGenerator, assetGenerator } from './AssetGeneratorAdapter';
 
 // Export Character Creator UI components
 export { CharacterCreator } from './CharacterCreator';
@@ -57,6 +117,17 @@ export * from './GameStorage';
 export * from './WASMBridge';
 export * from './TileMapper';
 export * from './MonsterMapper';
+export * from './DUNParser';
+export * from './ObjectMapper';
+export * from './QuestTriggers';
+export * from './ModTools';
+export * from './LevelValidator';
+export * from './CampaignConverter';
+export * from './CELEncoder';
+export * from './ProceduralGenerator';
+export * from './CampaignBlueprint';
+export * from './AssetRegistry';
+export * from './CampaignBuilder';
 
 /**
  * Neural Augmentation System status

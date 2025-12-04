@@ -10,6 +10,75 @@
 
 ---
 
+## NEW: MPQ Modding Approach (Recommended)
+
+**See:** [docs/MPQ_MODDING_PLAN.md](docs/MPQ_MODDING_PLAN.md)
+
+The superior approach is to **modify the MPQ files directly** rather than runtime memory injection:
+
+### Why MPQ Modding is Better
+
+| Aspect | WASM Injection | MPQ Modding |
+|--------|---------------|-------------|
+| Persistence | Lost on reload | Saved as file |
+| Stability | May crash | Safe - external file |
+| Exportable | No | Yes - downloadable mod |
+| Complexity | High (reverse engineering) | Medium (documented formats) |
+| Graphics | Not possible | Full support |
+| Shareable | No | Yes - distribute MPQ |
+
+### MPQ Approach Overview
+
+```
+spawn.mpq (original)
+       ↓
+   MPQ Reader
+       ↓
+AI Editing Tools ← AI generates content
+       ↓
+   MPQ Writer
+       ↓
+spawn_modded.mpq (downloadable)
+       ↓
+  Load in Game
+       ↓
+   Real Mods!
+```
+
+### Key File Formats
+
+| Format | Purpose | Modifiable |
+|--------|---------|------------|
+| DUN | Level layouts | ✅ Easy |
+| MIN/TIL | Tile definitions | ⚠️ Complex |
+| CEL/CL2 | Graphics | ✅ With RLE encoding |
+| PAL | Color palettes | ✅ Easy |
+| MON | Monster data | ⚠️ Complex |
+
+### Implementation Status
+
+- [x] MPQ Reader (savefile.js)
+- [x] Tile Mapper (TileMapper.js)
+- [x] Monster Mapper (MonsterMapper.js)
+- [x] CEL/CL2 Encoder (AssetPipeline.js)
+- [x] DUN Parser/Writer (DUNParser.js)
+- [x] MPQ Writer (MPQWriter.js)
+- [x] AI Mod Tools (ModTools.js)
+- [x] Mod Editor UI (ModEditor.js)
+
+**Continue reading MPQ_MODDING_PLAN.md for full implementation details.**
+
+---
+
+## Legacy: WASM Memory Injection
+
+The sections below document the WASM memory injection approach, which is still useful for:
+- Real-time runtime modifications
+- Testing without rebuilding MPQ
+- Understanding game internals
+
+---
+
 ## Part 1: Understanding the Problem
 
 ### What We Have Now
