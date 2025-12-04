@@ -16,6 +16,8 @@ import TileMapper from './TileMapper';
 import MonsterMapper from './MonsterMapper';
 import LevelValidator, { validateLevel, checkPath, analyzeAreas } from './LevelValidator';
 import CampaignConverter, { convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
+import ProceduralGenerator, { generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme, visualizeDungeon } from './ProceduralGenerator';
+import CELEncoder, { createCEL, createTestPatternCEL } from './CELEncoder';
 
 // Tool definitions for AI
 export const MOD_TOOLS = {
@@ -925,6 +927,530 @@ export const MOD_TOOLS = {
           validations,
           allValid,
           readyToExport: !params.dryRun && allValid,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  // ========== Procedural Generation Tools ==========
+
+  /**
+   * Generate a procedural dungeon using BSP algorithm
+   */
+  generateProceduralBSP: {
+    name: 'generateProceduralBSP',
+    description: 'Generate a dungeon using Binary Space Partitioning (classic room+corridor layout)',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path where to save the generated level',
+        required: true,
+      },
+      width: {
+        type: 'number',
+        description: 'Level width (default 40)',
+        required: false,
+      },
+      height: {
+        type: 'number',
+        description: 'Level height (default 40)',
+        required: false,
+      },
+      seed: {
+        type: 'number',
+        description: 'Random seed for reproducible generation',
+        required: false,
+      },
+      splitIterations: {
+        type: 'number',
+        description: 'Number of BSP split iterations (default 4)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, dungeonLevel } = context;
+
+      try {
+        const width = params.width || 40;
+        const height = params.height || 40;
+
+        const dungeon = generateBSP(width, height, {
+          seed: params.seed,
+          splitIterations: params.splitIterations,
+        });
+
+        // Convert to DUN format
+        const theme = TileMapper.getThemeForLevel(dungeonLevel);
+        const tileGrid = TileMapper.convertToTileGrid(dungeon.grid, theme);
+
+        const dunData = {
+          width,
+          height,
+          baseTiles: tileGrid,
+        };
+
+        // Validate
+        const validation = validateLevel(dunData, theme);
+
+        // Store
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: params.path,
+          width,
+          height,
+          rooms: dungeon.rooms.length,
+          stairs: dungeon.stairs,
+          algorithm: 'bsp',
+          seed: dungeon.seed,
+          valid: validation.valid,
+          preview: visualizeDungeon(dungeon),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Generate a cave dungeon using cellular automata
+   */
+  generateProceduralCave: {
+    name: 'generateProceduralCave',
+    description: 'Generate an organic cave-like dungeon using cellular automata',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path where to save the generated level',
+        required: true,
+      },
+      width: {
+        type: 'number',
+        description: 'Level width (default 40)',
+        required: false,
+      },
+      height: {
+        type: 'number',
+        description: 'Level height (default 40)',
+        required: false,
+      },
+      seed: {
+        type: 'number',
+        description: 'Random seed',
+        required: false,
+      },
+      fillProbability: {
+        type: 'number',
+        description: 'Initial fill probability 0-1 (default 0.45)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, dungeonLevel } = context;
+
+      try {
+        const width = params.width || 40;
+        const height = params.height || 40;
+
+        const dungeon = generateCave(width, height, {
+          seed: params.seed,
+          fillProbability: params.fillProbability,
+        });
+
+        const theme = TileMapper.getThemeForLevel(dungeonLevel);
+        const tileGrid = TileMapper.convertToTileGrid(dungeon.grid, theme);
+
+        const dunData = {
+          width,
+          height,
+          baseTiles: tileGrid,
+        };
+
+        const validation = validateLevel(dunData, theme);
+
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: params.path,
+          width,
+          height,
+          stairs: dungeon.stairs,
+          algorithm: 'cellular_automata',
+          seed: dungeon.seed,
+          valid: validation.valid,
+          preview: visualizeDungeon(dungeon),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Generate a dungeon using drunkard's walk algorithm
+   */
+  generateProceduralWalk: {
+    name: 'generateProceduralWalk',
+    description: 'Generate a winding dungeon using drunkard\'s walk algorithm',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path where to save the generated level',
+        required: true,
+      },
+      width: {
+        type: 'number',
+        description: 'Level width (default 40)',
+        required: false,
+      },
+      height: {
+        type: 'number',
+        description: 'Level height (default 40)',
+        required: false,
+      },
+      seed: {
+        type: 'number',
+        description: 'Random seed',
+        required: false,
+      },
+      floorPercent: {
+        type: 'number',
+        description: 'Target floor percentage 0-1 (default 0.35)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, dungeonLevel } = context;
+
+      try {
+        const width = params.width || 40;
+        const height = params.height || 40;
+
+        const dungeon = generateDrunkardWalk(width, height, {
+          seed: params.seed,
+          floorPercent: params.floorPercent,
+        });
+
+        const theme = TileMapper.getThemeForLevel(dungeonLevel);
+        const tileGrid = TileMapper.convertToTileGrid(dungeon.grid, theme);
+
+        const dunData = {
+          width,
+          height,
+          baseTiles: tileGrid,
+        };
+
+        const validation = validateLevel(dunData, theme);
+
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: params.path,
+          width,
+          height,
+          rooms: dungeon.rooms.length,
+          stairs: dungeon.stairs,
+          algorithm: 'drunkard_walk',
+          seed: dungeon.seed,
+          valid: validation.valid,
+          preview: visualizeDungeon(dungeon),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Generate an arena-style dungeon
+   */
+  generateProceduralArena: {
+    name: 'generateProceduralArena',
+    description: 'Generate an arena dungeon with central combat area and surrounding rooms',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path where to save the generated level',
+        required: true,
+      },
+      width: {
+        type: 'number',
+        description: 'Level width (default 40)',
+        required: false,
+      },
+      height: {
+        type: 'number',
+        description: 'Level height (default 40)',
+        required: false,
+      },
+      seed: {
+        type: 'number',
+        description: 'Random seed',
+        required: false,
+      },
+      arenaSize: {
+        type: 'number',
+        description: 'Arena size as portion of map 0-1 (default 0.4)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, dungeonLevel } = context;
+
+      try {
+        const width = params.width || 40;
+        const height = params.height || 40;
+
+        const dungeon = generateArena(width, height, {
+          seed: params.seed,
+          arenaSize: params.arenaSize,
+        });
+
+        const theme = TileMapper.getThemeForLevel(dungeonLevel);
+        const tileGrid = TileMapper.convertToTileGrid(dungeon.grid, theme);
+
+        const dunData = {
+          width,
+          height,
+          baseTiles: tileGrid,
+        };
+
+        const validation = validateLevel(dunData, theme);
+
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: params.path,
+          width,
+          height,
+          rooms: dungeon.rooms.length,
+          stairs: dungeon.stairs,
+          algorithm: 'arena',
+          seed: dungeon.seed,
+          valid: validation.valid,
+          preview: visualizeDungeon(dungeon),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Auto-generate dungeon based on dungeon level theme
+   */
+  generateProceduralAuto: {
+    name: 'generateProceduralAuto',
+    description: 'Automatically generate dungeon using algorithm suited for current dungeon level theme',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path where to save the generated level',
+        required: true,
+      },
+      dungeonLevel: {
+        type: 'number',
+        description: 'Dungeon level 1-16 (determines theme and algorithm)',
+        required: true,
+      },
+      width: {
+        type: 'number',
+        description: 'Level width (default 40)',
+        required: false,
+      },
+      height: {
+        type: 'number',
+        description: 'Level height (default 40)',
+        required: false,
+      },
+      seed: {
+        type: 'number',
+        description: 'Random seed',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      try {
+        const width = params.width || 40;
+        const height = params.height || 40;
+        const level = params.dungeonLevel || 1;
+
+        const dungeon = generateForTheme(width, height, level, {
+          seed: params.seed,
+        });
+
+        const theme = TileMapper.getThemeForLevel(level);
+        const tileGrid = TileMapper.convertToTileGrid(dungeon.grid, theme);
+
+        const dunData = {
+          width,
+          height,
+          baseTiles: tileGrid,
+        };
+
+        const validation = validateLevel(dunData, theme);
+
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: params.path,
+          dungeonLevel: level,
+          theme,
+          width,
+          height,
+          rooms: dungeon.rooms?.length || 0,
+          stairs: dungeon.stairs,
+          algorithm: dungeon.algorithm,
+          seed: dungeon.seed,
+          valid: validation.valid,
+          preview: visualizeDungeon(dungeon),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  // ========== CEL/Sprite Tools ==========
+
+  /**
+   * Create a test pattern sprite
+   */
+  createTestSprite: {
+    name: 'createTestSprite',
+    description: 'Create a test pattern CEL sprite for debugging',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path where to save the CEL file in MPQ',
+        required: true,
+      },
+      width: {
+        type: 'number',
+        description: 'Sprite width (default 64)',
+        required: false,
+      },
+      height: {
+        type: 'number',
+        description: 'Sprite height (default 64)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      try {
+        const width = params.width || 64;
+        const height = params.height || 64;
+
+        const celData = createTestPatternCEL(width, height);
+
+        modifiedFiles.set(params.path, {
+          type: 'cel',
+          data: celData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: params.path,
+          width,
+          height,
+          size: celData.length,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Create a solid color sprite
+   */
+  createSolidSprite: {
+    name: 'createSolidSprite',
+    description: 'Create a solid color CEL sprite',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path where to save the CEL file',
+        required: true,
+      },
+      width: {
+        type: 'number',
+        description: 'Sprite width',
+        required: true,
+      },
+      height: {
+        type: 'number',
+        description: 'Sprite height',
+        required: true,
+      },
+      colorIndex: {
+        type: 'number',
+        description: 'Palette color index (1-255)',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      try {
+        const celData = CELEncoder.createSolidColorCEL(
+          params.width,
+          params.height,
+          params.colorIndex
+        );
+
+        modifiedFiles.set(params.path, {
+          type: 'cel',
+          data: celData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: params.path,
+          width: params.width,
+          height: params.height,
+          colorIndex: params.colorIndex,
+          size: celData.length,
         };
       } catch (error) {
         return { success: false, error: error.message };

@@ -37,6 +37,8 @@ export { ModEditor, ModEditorButton } from './ModEditor';
 export { MPQWriter } from './MPQWriter';
 export { default as LevelValidator, validateLevel, checkPath, analyzeAreas, VALIDATION_STATUS } from './LevelValidator';
 export { default as CampaignConverter, convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
+export { default as CELEncoder, parsePalette, createCEL, imageDataToCEL, spriteSheetToCEL, createCL2 } from './CELEncoder';
+export { default as ProceduralGenerator, generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme } from './ProceduralGenerator';
 
 // Export provider system
 export { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
@@ -67,6 +69,8 @@ export * from './DUNParser';
 export * from './ModTools';
 export * from './LevelValidator';
 export * from './CampaignConverter';
+export * from './CELEncoder';
+export * from './ProceduralGenerator';
 
 /**
  * Neural Augmentation System status
