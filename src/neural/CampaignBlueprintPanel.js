@@ -24,7 +24,8 @@ import {
   NPC_REGISTRY,
   AssetSearch,
 } from './AssetRegistry';
-import { QuickCampaign } from './CampaignBuilder';
+import { CampaignBuilder, QuickCampaign } from './CampaignBuilder';
+import { BuildProgressPanel, buildProgress, BUILD_STATUS } from './CampaignBuildProgress';
 
 /**
  * Main Campaign Blueprint Panel
@@ -34,13 +35,21 @@ export class CampaignBlueprintPanel extends Component {
     super(props);
     this.state = {
       blueprint: null,
-      activeTab: 'overview', // overview, story, world, characters, quests, assets
+      activeTab: 'overview', // overview, story, world, characters, quests, build
       expandedAct: null,
       searchQuery: '',
       searchType: 'monsters',
       searchResults: [],
       showQuickCreate: false,
+      // Build state
+      isBuilding: false,
+      buildResult: null,
+      buildError: null,
     };
+
+    this.builder = new CampaignBuilder({
+      useProgressEmitter: true,
+    });
   }
 
   componentDidMount() {
@@ -289,6 +298,139 @@ export class CampaignBlueprintPanel extends Component {
     };
     reader.readAsText(file);
   };
+
+  /**
+   * Build campaign from blueprint
+   */
+  buildCampaign = async () => {
+    const { blueprint } = this.state;
+    if (!blueprint) return;
+
+    this.setState({
+      isBuilding: true,
+      buildResult: null,
+      buildError: null,
+      activeTab: 'build',
+    });
+
+    try {
+      const result = await this.builder.build(blueprint);
+
+      this.setState({
+        isBuilding: false,
+        buildResult: result,
+      });
+
+      // Notify parent of generated levels
+      if (this.props.onBuildComplete) {
+        this.props.onBuildComplete(result);
+      }
+
+      // Add levels to executor's modified files
+      if (this.props.executor && result.levels) {
+        for (const [path, dunData] of result.levels) {
+          this.props.executor.modifiedFiles.set(path, {
+            type: 'dun',
+            data: dunData,
+            modified: Date.now(),
+            isNew: true,
+          });
+        }
+      }
+
+      console.log('[CampaignBlueprintPanel] Build complete:', result);
+    } catch (error) {
+      console.error('[CampaignBlueprintPanel] Build failed:', error);
+      this.setState({
+        isBuilding: false,
+        buildError: error.message,
+      });
+    }
+  };
+
+  /**
+   * Build and play - builds then starts the game
+   */
+  buildAndPlay = async () => {
+    await this.buildCampaign();
+
+    // If successful and onPlayMod is provided, trigger it
+    if (!this.state.buildError && this.props.onPlayMod) {
+      this.props.onPlayMod(this.state.buildResult);
+    }
+  };
+
+  /**
+   * Render build tab
+   */
+  renderBuild() {
+    const { blueprint, isBuilding, buildResult, buildError } = this.state;
+
+    return (
+      <div className="blueprint-build">
+        <div className="build-header">
+          <h4>Build Campaign</h4>
+          <p>Generate all levels, place monsters, and prepare for play</p>
+        </div>
+
+        {/* Build Actions */}
+        <div className="build-actions">
+          <button
+            onClick={this.buildCampaign}
+            disabled={!blueprint || isBuilding}
+            className="btn btn-primary btn-large"
+          >
+            {isBuilding ? 'Building...' : 'Build Campaign'}
+          </button>
+          <button
+            onClick={this.buildAndPlay}
+            disabled={!blueprint || isBuilding}
+            className="btn btn-success btn-large"
+          >
+            {isBuilding ? 'Building...' : 'Build & Play'}
+          </button>
+        </div>
+
+        {/* Progress Panel */}
+        <div className="build-progress-container">
+          <BuildProgressPanel />
+        </div>
+
+        {/* Build Result */}
+        {buildResult && (
+          <div className="build-result success">
+            <h5>Build Complete</h5>
+            <div className="result-stats">
+              <span>Levels: {buildResult.levels?.size || 0}</span>
+              <span>Triggers: {buildResult.triggers?.length || 0}</span>
+              <span>Warnings: {buildResult.warnings?.length || 0}</span>
+            </div>
+            {buildResult.levels?.size > 0 && (
+              <div className="generated-files">
+                <h6>Generated Files:</h6>
+                <ul>
+                  {Array.from(buildResult.levels?.keys() || []).slice(0, 5).map(path => (
+                    <li key={path}>{path}</li>
+                  ))}
+                  {(buildResult.levels?.size || 0) > 5 && (
+                    <li>...and {buildResult.levels.size - 5} more</li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Build Error */}
+        {buildError && (
+          <div className="build-result error">
+            <h5>Build Failed</h5>
+            <p>{buildError}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   /**
    * Render overview tab
@@ -760,7 +902,7 @@ export class CampaignBlueprintPanel extends Component {
   }
 
   render() {
-    const { activeTab, blueprint } = this.state;
+    const { activeTab, blueprint, isBuilding } = this.state;
 
     return (
       <div className="campaign-blueprint-panel">
@@ -799,6 +941,13 @@ export class CampaignBlueprintPanel extends Component {
           >
             Quests
           </button>
+          <button
+            className={`${activeTab === 'build' ? 'active' : ''} ${isBuilding ? 'building' : ''}`}
+            onClick={() => this.setState({ activeTab: 'build' })}
+            disabled={!blueprint}
+          >
+            {isBuilding ? 'Building...' : 'Build'}
+          </button>
         </div>
 
         <div className="blueprint-content">
@@ -807,6 +956,7 @@ export class CampaignBlueprintPanel extends Component {
           {activeTab === 'world' && this.renderWorld()}
           {activeTab === 'characters' && this.renderCharacters()}
           {activeTab === 'quests' && this.renderQuests()}
+          {activeTab === 'build' && this.renderBuild()}
         </div>
       </div>
     );

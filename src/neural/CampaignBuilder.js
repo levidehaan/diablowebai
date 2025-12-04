@@ -53,6 +53,7 @@ import ObjectMapper from './ObjectMapper';
 import DUNParser from './DUNParser';
 import { validateLevel, checkPath } from './LevelValidator';
 import questTriggerManager, { TRIGGER_TYPES, ACTION_TYPES, TriggerBuilder, ActionBuilder } from './QuestTriggers';
+import { buildProgress, BUILD_STATUS, TASK_STATUS } from './CampaignBuildProgress';
 
 // ============================================================================
 // CAMPAIGN BUILDER
@@ -78,6 +79,7 @@ export class CampaignBuilder {
       assetGenerator: options.assetGenerator || null, // NanoBanana integration
       validateOnBuild: options.validateOnBuild !== false,
       seed: options.seed || Date.now(),
+      useProgressEmitter: options.useProgressEmitter !== false, // Enable progress tracking
       ...options,
     };
 
@@ -114,6 +116,11 @@ export class CampaignBuilder {
       warnings: [],
     };
 
+    // Start progress tracking
+    if (this.options.useProgressEmitter) {
+      buildProgress.startBuild(this.blueprint.id);
+    }
+
     try {
       // Phase 1: Story Generation (if needed)
       await this.buildStory();
@@ -140,13 +147,24 @@ export class CampaignBuilder {
 
       this.buildState.phase = 'complete';
       this.buildState.progress = 100;
-      this.emit('buildComplete', this.getResult());
 
-      return this.getResult();
+      const result = this.getResult();
+
+      if (this.options.useProgressEmitter) {
+        buildProgress.completeBuild(true, `Generated ${result.levels.length} levels, ${result.triggers.length} triggers`);
+      }
+
+      this.emit('buildComplete', result);
+      return result;
 
     } catch (error) {
       this.buildState.phase = 'error';
       this.buildState.errors.push(error.message);
+
+      if (this.options.useProgressEmitter) {
+        buildProgress.completeBuild(false, error.message);
+      }
+
       this.emit('buildError', error);
       throw error;
     }
@@ -722,13 +740,35 @@ Return as JSON with structure:
     const dungeonLocations = Array.from(this.blueprint.world.locations.values())
       .filter(l => l.type === LOCATION_TYPES.DUNGEON);
 
+    // Add tasks for each level
+    dungeonLocations.forEach((loc, i) => {
+      this.addTask(`level_${loc.id}`, `Generate Level: ${loc.name}`);
+    });
+
     for (let i = 0; i < dungeonLocations.length; i++) {
       const location = dungeonLocations[i];
+      const taskId = `level_${location.id}`;
+
+      this.startTask(taskId);
       this.updateProgress('levels', (i / dungeonLocations.length) * 100, `Generating ${location.name}...`);
 
-      const level = await this.generateLevel(location);
-      const path = `levels/${location.theme}/ai_${location.id}.dun`;
-      this.generatedContent.levels.set(path, level);
+      try {
+        const level = await this.generateLevel(location);
+        const path = `levels/${location.theme}/ai_${location.id}.dun`;
+        this.generatedContent.levels.set(path, level);
+
+        // Validate the level
+        const validation = validateLevel(level, location.theme);
+        if (validation.valid) {
+          this.completeTask(taskId, TASK_STATUS.SUCCESS, `${level.width}x${level.height}`);
+        } else {
+          this.completeTask(taskId, TASK_STATUS.WARNING, validation.warnings[0]);
+          this.buildState.warnings.push(`Level ${location.name}: ${validation.warnings[0]}`);
+        }
+      } catch (error) {
+        this.completeTask(taskId, TASK_STATUS.ERROR, error.message);
+        console.error(`[CampaignBuilder] Failed to generate level ${location.name}:`, error);
+      }
     }
 
     this.updateProgress('levels', 100, 'Levels complete');
@@ -1029,10 +1069,63 @@ Return as JSON with structure:
   // ============================================================================
 
   updateProgress(phase, progress, step) {
+    const previousPhase = this.buildState.phase;
     this.buildState.phase = phase;
     this.buildState.progress = progress;
     this.buildState.currentStep = step;
     this.emit('progress', { phase, progress, step });
+
+    // Emit to buildProgress
+    if (this.options.useProgressEmitter) {
+      // Start new phase if different
+      if (previousPhase !== phase && progress === 0) {
+        buildProgress.startPhase(phase);
+      }
+
+      // Update phase progress
+      buildProgress.updatePhaseProgress(phase, progress, step);
+
+      // Complete phase if at 100%
+      if (progress >= 100) {
+        buildProgress.completePhase(phase, TASK_STATUS.SUCCESS);
+      }
+    }
+  }
+
+  /**
+   * Add a task for progress tracking
+   */
+  addTask(taskId, name) {
+    if (this.options.useProgressEmitter) {
+      buildProgress.addTask(taskId, name, this.buildState.phase);
+    }
+  }
+
+  /**
+   * Start a task
+   */
+  startTask(taskId) {
+    if (this.options.useProgressEmitter) {
+      buildProgress.startTask(taskId);
+    }
+  }
+
+  /**
+   * Complete a task
+   */
+  completeTask(taskId, status = TASK_STATUS.SUCCESS, message = null) {
+    if (this.options.useProgressEmitter) {
+      buildProgress.completeTask(taskId, status, message);
+    }
+  }
+
+  /**
+   * Retry a task
+   */
+  retryTask(taskId, reason) {
+    if (this.options.useProgressEmitter) {
+      buildProgress.retryTask(taskId, reason);
+    }
   }
 
   generateActTitle(theme) {
