@@ -139,6 +139,7 @@ export * from './ProceduralGenerator';
 export * from './CampaignBlueprint';
 export * from './AssetRegistry';
 export * from './CampaignBuilder';
+export * from './TownGenerator';
 
 /**
  * Neural Augmentation System status

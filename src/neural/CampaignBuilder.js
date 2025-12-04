@@ -53,6 +53,7 @@ import ObjectMapper from './ObjectMapper';
 import DUNParser from './DUNParser';
 import { validateLevel, checkPath } from './LevelValidator';
 import { getGameLevelPath, GAME_LEVEL_PATHS } from './CampaignConverter';
+import { TownGenerator, STARTING_AREA_TYPES, getTownSectorPaths } from './TownGenerator';
 import questTriggerManager, { TRIGGER_TYPES, ACTION_TYPES, TriggerBuilder, ActionBuilder } from './QuestTriggers';
 import { buildProgress, BUILD_STATUS, TASK_STATUS } from './CampaignBuildProgress';
 
@@ -129,19 +130,22 @@ export class CampaignBuilder {
       // Phase 2: World Building
       await this.buildWorld();
 
-      // Phase 3: Character Setup
+      // Phase 3: Starting Area Generation
+      await this.buildStartingArea();
+
+      // Phase 4: Character Setup
       await this.buildCharacters();
 
-      // Phase 4: Quest System
+      // Phase 5: Quest System
       await this.buildQuests();
 
-      // Phase 5: Level Generation
+      // Phase 6: Level Generation
       await this.buildLevels();
 
-      // Phase 6: Asset Resolution
+      // Phase 7: Asset Resolution
       await this.resolveAssets();
 
-      // Phase 7: Validation
+      // Phase 8: Validation
       if (this.options.validateOnBuild) {
         await this.validateCampaign();
       }
@@ -473,7 +477,85 @@ Return as JSON with structure:
   }
 
   // ============================================================================
-  // PHASE 3: CHARACTER SETUP
+  // PHASE 3: STARTING AREA GENERATION
+  // ============================================================================
+
+  async buildStartingArea() {
+    this.updateProgress('startingArea', 0, 'Generating starting area...');
+
+    // Determine starting area type from blueprint settings
+    const startingAreaConfig = this.blueprint.settings?.startingArea || {};
+    const areaType = startingAreaConfig.type || STARTING_AREA_TYPES.VILLAGE;
+
+    this.addTask('starting_area', `Generate Starting Area: ${areaType}`);
+    this.startTask('starting_area');
+
+    try {
+      // Map storyline to starting area type if not explicitly set
+      let resolvedType = areaType;
+      if (!startingAreaConfig.type && this.blueprint.story?.premise) {
+        resolvedType = this.inferStartingAreaType(this.blueprint.story.premise);
+      }
+
+      // Create town generator with campaign context
+      const generator = new TownGenerator({
+        type: resolvedType,
+        theme: startingAreaConfig.theme || 'default',
+        storyline: this.blueprint.story,
+        npcs: this.blueprint.characters?.getAllCharacters?.() || [],
+        seed: this.options.seed,
+      });
+
+      // Generate all town sectors
+      const townBuffers = generator.toBuffers();
+
+      // Add to generated content
+      for (const [path, buffer] of townBuffers) {
+        // Store the DUN data
+        const dunData = DUNParser.parse(buffer);
+        this.generatedContent.levels.set(path, dunData);
+      }
+
+      this.updateProgress('startingArea', 100, 'Starting area complete');
+      this.completeTask('starting_area', TASK_STATUS.SUCCESS, `${townBuffers.size} sectors generated`);
+
+      console.log(`[CampaignBuilder] Generated ${resolvedType} starting area with ${townBuffers.size} sectors`);
+    } catch (error) {
+      this.completeTask('starting_area', TASK_STATUS.ERROR, error.message);
+      console.error('[CampaignBuilder] Failed to generate starting area:', error);
+      // Don't throw - starting area is optional, fall back to default town
+      this.buildState.warnings.push(`Starting area generation failed: ${error.message}. Using default town.`);
+    }
+  }
+
+  /**
+   * Infer starting area type from story premise
+   */
+  inferStartingAreaType(premise) {
+    const premiseLower = premise.toLowerCase();
+
+    if (premiseLower.includes('war') || premiseLower.includes('army') || premiseLower.includes('military') || premiseLower.includes('siege')) {
+      return STARTING_AREA_TYPES.CAMP;
+    }
+    if (premiseLower.includes('ruin') || premiseLower.includes('destroy') || premiseLower.includes('fallen') || premiseLower.includes('apocalypse')) {
+      return STARTING_AREA_TYPES.RUINS;
+    }
+    if (premiseLower.includes('hidden') || premiseLower.includes('secret') || premiseLower.includes('sanctuary') || premiseLower.includes('refuge')) {
+      return STARTING_AREA_TYPES.SANCTUARY;
+    }
+    if (premiseLower.includes('frontier') || premiseLower.includes('outpost') || premiseLower.includes('border') || premiseLower.includes('wilderness')) {
+      return STARTING_AREA_TYPES.OUTPOST;
+    }
+    if (premiseLower.includes('crypt') || premiseLower.includes('tomb') || premiseLower.includes('underground') || premiseLower.includes('buried')) {
+      return STARTING_AREA_TYPES.CRYPT;
+    }
+
+    // Default to village
+    return STARTING_AREA_TYPES.VILLAGE;
+  }
+
+  // ============================================================================
+  // PHASE 4: CHARACTER SETUP
   // ============================================================================
 
   async buildCharacters() {

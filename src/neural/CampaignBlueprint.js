@@ -204,6 +204,14 @@ export class CampaignBlueprint {
       startingLevel: config.startingLevel || 1,
       maxLevel: config.maxLevel || 50,
       permadeath: config.permadeath || false,
+      // Starting area settings
+      startingArea: {
+        type: config.startingArea?.type || null, // village, camp, ruins, sanctuary, outpost, crypt
+        theme: config.startingArea?.theme || 'default',
+        name: config.startingArea?.name || null,
+        customNPCs: config.startingArea?.customNPCs || [],
+        dungeonEntranceName: config.startingArea?.dungeonEntranceName || 'Cathedral',
+      },
       ...config.settings,
     };
 
