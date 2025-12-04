@@ -165,6 +165,7 @@ export class MPQWriter {
 
   /**
    * Build the modified MPQ
+   * Strategy: Keep original data intact, append new files at end, rebuild tables
    */
   build() {
     if (!this.originalBuffer) {
@@ -186,70 +187,57 @@ export class MPQWriter {
       return new Uint8Array(this.originalBuffer);
     }
 
-    // Find existing hash entries or create new ones
+    // Find existing hash entries and prepare file entries
     const fileEntries = this.prepareFileEntries(newFiles);
 
-    // Calculate sizes
-    const dataStart = MPQ_HEADER_SIZE;
-    let dataPos = dataStart;
+    // Calculate new file positions - append after original data area
+    // Original data area ends at the hash table position
+    let appendPos = this.hashTablePos;
 
-    // Copy original file data (excluding modified files)
-    const originalData = this.collectOriginalData(fileEntries);
-    dataPos += originalData.length;
-
-    // Add new file data
     for (const entry of fileEntries) {
-      if (entry.isNew || entry.isModified) {
-        entry.filePos = dataPos;
-        dataPos += entry.data.length;
-      }
+      entry.filePos = appendPos;
+      appendPos += entry.data.length;
     }
 
-    // Calculate table positions
-    const hashTablePos = dataPos;
-    const blockTablePos = hashTablePos + this.hashTableSize * HASH_ENTRY_SIZE;
-    const totalSize = blockTablePos + this.blockTableSize * BLOCK_ENTRY_SIZE;
+    // Calculate new table positions
+    const newHashTablePos = appendPos;
+    const newBlockTablePos = newHashTablePos + this.hashTableSize * HASH_ENTRY_SIZE;
+    const totalSize = newBlockTablePos + this.blockTableSize * BLOCK_ENTRY_SIZE;
 
     // Create output buffer
     const output = new Uint8Array(totalSize);
     const view = new DataView(output.buffer);
 
-    // Write header
-    view.setUint32(0, MPQ_MAGIC, true);
-    view.setUint32(4, MPQ_HEADER_SIZE, true);
-    view.setUint32(8, totalSize, true);
-    view.setUint16(12, this.formatVersion, true);
-    view.setUint16(14, this.blockSizeShift, true);
-    view.setUint32(16, hashTablePos, true);
-    view.setUint32(20, blockTablePos, true);
-    view.setUint32(24, this.hashTableSize, true);
-    view.setUint32(28, this.blockTableSize, true);
-
-    // Write original file data
-    output.set(originalData, dataStart);
+    // Copy original data area (header + all file data up to hash table)
+    output.set(new Uint8Array(this.originalBuffer, 0, this.hashTablePos), 0);
 
     // Write new/modified file data
     for (const entry of fileEntries) {
-      if (entry.isNew || entry.isModified) {
-        output.set(entry.data, entry.filePos);
-      }
+      output.set(entry.data, entry.filePos);
     }
+
+    // Update header with new positions and size
+    view.setUint32(8, totalSize, true);  // Archive size
+    view.setUint32(16, newHashTablePos, true);  // Hash table position
+    view.setUint32(20, newBlockTablePos, true);  // Block table position
 
     // Build and write hash table
     const newHashTable = this.buildHashTable(fileEntries);
     const hashTableEncrypted = new Uint32Array(newHashTable.length);
     hashTableEncrypted.set(newHashTable);
     this.encryptTable(hashTableEncrypted, hash('(hash table)', 3));
-    output.set(new Uint8Array(hashTableEncrypted.buffer), hashTablePos);
+    output.set(new Uint8Array(hashTableEncrypted.buffer), newHashTablePos);
 
     // Build and write block table
     const newBlockTable = this.buildBlockTable(fileEntries);
     const blockTableEncrypted = new Uint32Array(newBlockTable.length);
     blockTableEncrypted.set(newBlockTable);
     this.encryptTable(blockTableEncrypted, hash('(block table)', 3));
-    output.set(new Uint8Array(blockTableEncrypted.buffer), blockTablePos);
+    output.set(new Uint8Array(blockTableEncrypted.buffer), newBlockTablePos);
 
-    console.log(`[MPQWriter] Built MPQ: ${totalSize} bytes, ${fileEntries.filter(e => e.isModified || e.isNew).length} modified files`);
+    console.log(`[MPQWriter] Built MPQ: ${totalSize} bytes, ${fileEntries.length} modified files`);
+    console.log(`[MPQWriter] Original hash table at ${this.hashTablePos}, new at ${newHashTablePos}`);
+    console.log(`[MPQWriter] Original block table at ${this.blockTablePos}, new at ${newBlockTablePos}`);
 
     return output;
   }
@@ -297,40 +285,6 @@ export class MPQWriter {
     }
 
     return entries;
-  }
-
-  /**
-   * Collect original file data (excluding modified files)
-   */
-  collectOriginalData(modifiedEntries) {
-    const modifiedBlocks = new Set(modifiedEntries.filter(e => !e.isNew).map(e => e.blockIndex));
-    const chunks = [];
-    let offset = MPQ_HEADER_SIZE;
-
-    // Find the first block that isn't modified
-    for (let i = 0; i < this.blockTableSize; i++) {
-      if (modifiedBlocks.has(i)) continue;
-
-      const filePos = this.blockTable[i * 4];
-      const cmpSize = this.blockTable[i * 4 + 1];
-
-      if (filePos < this.hashTablePos && cmpSize > 0) {
-        // Copy this block's data
-        const data = new Uint8Array(this.originalBuffer, filePos, cmpSize);
-        chunks.push(data);
-      }
-    }
-
-    // Combine chunks
-    const totalSize = chunks.reduce((sum, c) => sum + c.length, 0);
-    const result = new Uint8Array(totalSize);
-    let pos = 0;
-    for (const chunk of chunks) {
-      result.set(chunk, pos);
-      pos += chunk.length;
-    }
-
-    return result;
   }
 
   /**
