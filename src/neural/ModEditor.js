@@ -67,6 +67,10 @@ export class ModEditor extends Component {
       showFileList: false,
       fileList: [],
       selectedFile: null,
+
+      // Download notice
+      showDownloadNotice: false,
+      downloadedFilename: null,
     };
 
     this.executor = new ModToolExecutor();
@@ -113,7 +117,26 @@ export class ModEditor extends Component {
       // Build the modified MPQ
       const modifiedMpq = writer.build();
 
+      // Auto-download the modified MPQ so user has a copy
+      // This ensures they can reload it later without rebuilding
+      const timestamp = Date.now();
+      const filename = `spawn_modded_${timestamp}.mpq`;
+      const blob = new Blob([modifiedMpq], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      console.log(`[ModEditor] Auto-downloaded modified MPQ: ${filename}`);
+
       this.updateOperation(opId, 'success');
+
+      // Show notification that download happened
+      this.setState({
+        downloadedFilename: filename,
+        showDownloadNotice: true,
+      });
 
       // Call parent callback to start modded game
       if (this.props.onStartModded) {
@@ -123,6 +146,35 @@ export class ModEditor extends Component {
       this.updateOperation(opId, 'error', error.message);
       this.setState({ status: 'ready', error: error.message });
       console.error('[ModEditor] Failed to start modded game:', error);
+    }
+  }
+
+  /**
+   * Play the currently loaded MPQ directly (for pre-modded MPQs loaded from disk)
+   */
+  handlePlayLoaded = async () => {
+    if (!this.originalMpqBuffer) {
+      alert('No MPQ loaded');
+      return;
+    }
+
+    const opId = this.addOperation('playLoaded', { file: this.state.mpqFileName }, 'running');
+    this.setState({ status: 'working' });
+
+    try {
+      // Convert buffer to Uint8Array if needed
+      const mpqData = new Uint8Array(this.originalMpqBuffer);
+
+      this.updateOperation(opId, 'success');
+
+      // Call parent callback to start game with loaded MPQ
+      if (this.props.onStartModded) {
+        await this.props.onStartModded(mpqData);
+      }
+    } catch (error) {
+      this.updateOperation(opId, 'error', error.message);
+      this.setState({ status: 'ready', error: error.message });
+      console.error('[ModEditor] Failed to play loaded MPQ:', error);
     }
   }
 
@@ -496,6 +548,8 @@ export class ModEditor extends Component {
       showFileList,
       fileList,
       selectedFile,
+      showDownloadNotice,
+      downloadedFilename,
     } = this.state;
 
     // Show loading screen while fetching spawn.mpq
@@ -537,9 +591,10 @@ export class ModEditor extends Component {
             />
             <button
               onClick={() => this.fileInputRef.current.click()}
-              className="btn btn-secondary"
+              className="btn btn-load"
+              title="Load a spawn.mpq or previously downloaded modded game"
             >
-              Load MPQ
+              Load MPQ from Disk
             </button>
             <button
               onClick={this.generateTestLevel}
@@ -549,9 +604,18 @@ export class ModEditor extends Component {
               Generate Test Level
             </button>
             <button
+              onClick={this.handlePlayLoaded}
+              disabled={!mpqLoaded}
+              className="btn btn-play"
+              title="Play the loaded MPQ file directly"
+            >
+              Play Loaded
+            </button>
+            <button
               onClick={this.handleStartModded}
               disabled={modifiedFiles.length === 0}
               className="btn btn-play"
+              title="Build and play with current modifications"
             >
               Play Modded ({modifiedFiles.length})
             </button>
@@ -574,6 +638,22 @@ export class ModEditor extends Component {
         {error && (
           <div className="mod-editor-error">
             {error}
+          </div>
+        )}
+
+        {showDownloadNotice && (
+          <div className="mod-editor-notice">
+            <span className="notice-icon">✓</span>
+            <span className="notice-text">
+              Your modified game was downloaded as <strong>{downloadedFilename}</strong>.
+              To play again later, use "Load MPQ" to load this file.
+            </span>
+            <button
+              className="notice-dismiss"
+              onClick={() => this.setState({ showDownloadNotice: false })}
+            >
+              ×
+            </button>
           </div>
         )}
 

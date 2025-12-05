@@ -11,7 +11,7 @@
   background: rgba(0, 0, 0, 0.95);
   color: #c4a000;
   font-family: 'Courier New', monospace;
-  z-index: 1000;
+  z-index: 1100;
   display: flex;
   flex-direction: column;
   padding: 16px;
@@ -128,6 +128,18 @@
       color: #888;
     }
 
+    &.btn-load {
+      background: #2a2a3a;
+      border-color: #4a4a6a;
+      color: #aaf;
+
+      &:hover:not(:disabled) {
+        background: #3a3a4a;
+        border-color: #6a6a8a;
+        color: #ccf;
+      }
+    }
+
     &.btn-small {
       padding: 4px 8px;
       font-size: 11px;
@@ -142,6 +154,48 @@
   padding: 8px 12px;
   margin-bottom: 12px;
   border-radius: 4px;
+}
+
+.mod-editor-notice {
+  background: #1a3a2a;
+  border: 1px solid #3a6a4a;
+  color: #8f8;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  .notice-icon {
+    font-size: 16px;
+    color: #6a6;
+    flex-shrink: 0;
+  }
+
+  .notice-text {
+    flex: 1;
+    font-size: 13px;
+    line-height: 1.4;
+
+    strong {
+      color: #afa;
+    }
+  }
+
+  .notice-dismiss {
+    background: transparent;
+    border: none;
+    color: #6a6;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+
+    &:hover {
+      color: #8f8;
+    }
+  }
 }
 
 .mod-editor-content {

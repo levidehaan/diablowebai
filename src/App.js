@@ -1032,12 +1032,15 @@ class App extends React.Component {
 
     if (showModEditor) {
       return (
-        <ModEditor
-          filesystem={this.fs}
-          modifiedMpq={this.state.modifiedMpq}
-          onClose={this.closeModEditor}
-          onStartModded={this.startModdedGame}
-        />
+        <>
+          <div className="ai-config-overlay" />
+          <ModEditor
+            filesystem={this.fs}
+            modifiedMpq={this.state.modifiedMpq}
+            onClose={this.closeModEditor}
+            onStartModded={this.startModdedGame}
+          />
+        </>
       );
     }
 
@@ -1211,8 +1214,8 @@ class App extends React.Component {
         {/* AI modals rendered outside BodyV so pointer-events work */}
         {this.renderAIModals()}
 
-        {/* AI Game Session overlay - shown when playing AI campaign */}
-        {this.state.playingAICampaign && this.state.aiGameSession && (
+        {/* AI Game Session overlay - shown when playing AI campaign (hidden when ModEditor is open) */}
+        {this.state.playingAICampaign && this.state.aiGameSession && !this.state.showModEditor && (
           <AIGameOverlay session={this.state.aiGameSession} />
         )}
       </div>
