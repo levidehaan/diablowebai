@@ -409,6 +409,22 @@ class App extends React.Component {
       const modifiedMpq = writer.build();
       console.log(`[App] Built modified MPQ: ${modifiedMpq.length} bytes`);
 
+      // Auto-download the modified MPQ so user has a backup copy
+      const timestamp = Date.now();
+      const safeName = campaign.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const filename = `${safeName}_${timestamp}.mpq`;
+      const blob = new Blob([modifiedMpq], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      console.log(`[App] Auto-downloaded modified MPQ: ${filename}`);
+
+      // Store in state for later access
+      this.setState({ modifiedMpq });
+
       // Set up AI game session for overlay (optional enhancement layer)
       const session = new AIGameSession(campaign, activeWorld, campaignProgress);
       session.start();
