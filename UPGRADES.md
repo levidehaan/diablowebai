@@ -61,63 +61,67 @@ Detailed technical documentation has been created in the `docs/` directory:
   - [x] Gold drop rates
 
 ### 1.3 Data Flow Pipeline
-- [ ] Design unified pipeline: AI Intent → Parameters → MPQ Build → Game Load
-- [ ] Create parameter validation layer
-- [ ] Implement rollback mechanism for failed builds
-- [ ] Add caching for frequently used configurations
+- [x] Design unified pipeline: AI Intent → Parameters → MPQ Build → Game Load *(see [src/neural/DataFlowPipeline.js](src/neural/DataFlowPipeline.js))*
+- [x] Create parameter validation layer
+- [x] Implement rollback mechanism for failed builds
+- [x] Add caching for frequently used configurations
 
 ---
 
 ## 2. Visual Grid System for AI
 
+> **Status**: Implemented in [src/neural/VisualGridSystem.js](src/neural/VisualGridSystem.js)
+
 ### 2.1 Grid Image Generator
-- [ ] Create JavaScript canvas-based grid renderer
-  - [ ] Support configurable grid dimensions (e.g., 100x100, 500x500)
-  - [ ] Alphanumeric coordinate system (e.g., "348baab x 212ccaq")
-  - [ ] Color-coded tile types with legend
-  - [ ] Zoom levels (overview → detailed)
-- [ ] Tile type visualization
-  - [ ] Roads (brown/tan paths)
-  - [ ] Water (blue areas)
-  - [ ] Buildings/houses (gray rectangles with labels)
-  - [ ] NPCs/people (colored dots with names)
-  - [ ] Dungeon entrances (red/dark markers)
-  - [ ] Bridges (crossing water)
-  - [ ] Walls/barriers (solid lines)
-  - [ ] Vegetation/trees (green markers)
-  - [ ] Interactive objects (chests, shrines, etc.)
+- [x] Create JavaScript canvas-based grid renderer
+  - [x] Support configurable grid dimensions (e.g., 100x100, 500x500)
+  - [x] Alphanumeric coordinate system (e.g., "A1", "Z26", "AA27")
+  - [x] Color-coded tile types with legend
+  - [x] Zoom levels (overview → detailed) - 5 levels: OVERVIEW, REGION, STANDARD, DETAILED, CLOSE
+- [x] Tile type visualization
+  - [x] Roads (brown/tan paths)
+  - [x] Water (blue areas)
+  - [x] Buildings/houses (gray rectangles with labels)
+  - [x] NPCs/people (colored dots with names)
+  - [x] Dungeon entrances (red/dark markers)
+  - [x] Bridges (crossing water)
+  - [x] Walls/barriers (solid lines)
+  - [x] Vegetation/trees (green markers)
+  - [x] Interactive objects (chests, shrines, etc.)
 
 ### 2.2 AI Interaction Protocol
-- [ ] Define grid command vocabulary for AI
-  - [ ] `ZOOM <start_coord> <end_coord>` - Get detailed view of area
-  - [ ] `PLACE <type> <coord>` - Place single item
-  - [ ] `ROAD <start_coord> <end_coord>` - Auto-pathing road
-  - [ ] `REGION <type> <coord1> <coord2> <coord3> <coord4>` - Define area
-  - [ ] `BUILDING <type> <coord> <size>` - Place structure
-  - [ ] `SPAWN_ZONE <monster_type> <coord> <radius> <density>`
-  - [ ] `DUNGEON_ENTRANCE <dungeon_id> <coord>`
-  - [ ] `NPC <npc_type> <coord> <name> <dialogue_id>`
-- [ ] Collision detection system
-  - [ ] Auto-route roads around obstacles
-  - [ ] Prevent overlapping structures
-  - [ ] Ensure walkable paths between key locations
-- [ ] Batch command processing
-  - [ ] Collect all AI commands during session
-  - [ ] Validate complete layout before building
-  - [ ] Generate final configuration from command history
+- [x] Define grid command vocabulary for AI
+  - [x] `ZOOM <start_coord> <end_coord>` - Get detailed view of area
+  - [x] `PLACE <type> <coord>` - Place single item
+  - [x] `ROAD <start_coord> <end_coord>` - Auto-pathing road
+  - [x] `REGION <type> <coord1> <coord2> <coord3> <coord4>` - Define area
+  - [x] `BUILDING <type> <coord> <size>` - Place structure
+  - [x] `SPAWN_ZONE <monster_type> <coord> <radius> <density>`
+  - [x] `DUNGEON_ENTRANCE <dungeon_id> <coord>`
+  - [x] `NPC <npc_type> <coord> <name> <dialogue_id>`
+- [x] Collision detection system
+  - [x] Walkability checking per tile type
+  - [x] Prevent overlapping structures
+  - [x] Path walkability validation
+- [x] Batch command processing
+  - [x] Execute multiple commands via `executeBatch()`
+  - [ ] Validate complete layout before building - *pending integration*
+  - [ ] Generate final configuration from command history - *pending*
 
 ### 2.3 Grid State Management
-- [ ] Save/load grid states
-- [ ] Undo/redo for AI decisions
-- [ ] Version history of grid modifications
-- [ ] Export grid as JSON configuration
+- [x] Save/load grid states (via `exportState()`/`importState()`)
+- [x] Undo/redo for AI decisions (50-level history)
+- [ ] Version history of grid modifications - *future enhancement*
+- [x] Export grid as JSON configuration
 
 ---
 
 ## 3. Dungeon Parameter Control
 
+> **Status**: Mostly implemented in [src/neural/DungeonConfig.js](src/neural/DungeonConfig.js)
+
 ### 3.1 Per-Level Configuration
-- [ ] Create dungeon configuration schema
+- [x] Create dungeon configuration schema *(see DungeonConfig class)*
   ```javascript
   {
     dungeonId: "cathedral_1",
@@ -143,40 +147,40 @@ Detailed technical documentation has been created in the `docs/` directory:
     }
   }
   ```
-- [ ] Level-specific settings
-  - [ ] Monster level/difficulty
-  - [ ] Monster type restrictions
-  - [ ] Boss placement (which level, which room type)
-  - [ ] Loot chest density
-  - [ ] Loot quality tiers
-  - [ ] Light/dark ambiance
-  - [ ] Special room types to include
+- [x] Level-specific settings
+  - [x] Monster level/difficulty
+  - [x] Monster type restrictions
+  - [x] Boss placement (which level, which room type)
+  - [x] Loot chest density
+  - [x] Loot quality tiers
+  - [x] Light/dark ambiance
+  - [x] Special room types to include
 
 ### 3.2 Monster Configuration
-- [ ] Monster pool management per dungeon level
-- [ ] Unique/champion monster spawn rates
-- [ ] Boss configuration
-  - [ ] Boss type selection
-  - [ ] Boss level/stats
-  - [ ] Boss loot table
-  - [ ] Boss spawn conditions (room cleared, etc.)
-- [ ] Monster behavior hints (aggressive, patrol, ambush)
+- [x] Monster pool management per dungeon level
+- [x] Unique/champion monster spawn rates
+- [x] Boss configuration
+  - [x] Boss type selection
+  - [x] Boss level/stats
+  - [x] Boss loot table
+  - [ ] Boss spawn conditions (room cleared, etc.) - *pending integration*
+- [ ] Monster behavior hints (aggressive, patrol, ambush) - *future enhancement*
 
 ### 3.3 Loot Configuration
-- [ ] Chest/container placement density
-- [ ] Item quality distribution curves
-- [ ] Gold drop multipliers
-- [ ] Unique item placement (quest items, etc.)
-- [ ] Shrine types and frequency
+- [x] Chest/container placement density
+- [x] Item quality distribution curves
+- [x] Gold drop multipliers
+- [x] Unique item placement (quest items, etc.)
+- [ ] Shrine types and frequency - *pending*
 
 ### 3.4 Visual Theme Control
-- [ ] Texture set selection per level
-  - [ ] Cathedral (gray stone, stained glass)
-  - [ ] Catacombs (bone, crypts)
-  - [ ] Caves (natural rock, water)
-  - [ ] Hell (fire, blood, demonic)
-- [ ] Color palette modifications
-- [ ] Ambient effects (fog, particles)
+- [x] Texture set selection per level
+  - [x] Cathedral (gray stone, stained glass)
+  - [x] Catacombs (bone, crypts)
+  - [x] Caves (natural rock, water)
+  - [x] Hell (fire, blood, demonic)
+- [ ] Color palette modifications - *future enhancement*
+- [ ] Ambient effects (fog, particles) - *future enhancement*
 
 ---
 

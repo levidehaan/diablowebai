@@ -143,6 +143,27 @@ export { gameEventDetector, GameEventDetector, GameEventType } from './GameEvent
 export { gameEventEmitter } from './GameEventEmitter';
 export { questTriggerSystem, QuestTriggerSystem, QuestStatus, TriggerType } from './QuestTriggerSystem';
 
+// Export Data Flow Pipeline (AI Intent → Parameters → MPQ → Game)
+export {
+  dataFlowPipeline,
+  PipelineStage,
+  PipelineStatus,
+} from './DataFlowPipeline';
+
+// Export Visual Grid System (for AI vision/interaction)
+export {
+  visualGridSystem,
+  VisualGridSystem,
+  TileType,
+  ObjectType,
+  ZoomLevel,
+  CommandType,
+  CoordinateSystem,
+  GridState,
+  GridImageGenerator,
+  AICommandProcessor,
+} from './VisualGridSystem';
+
 // Export utilities from each module
 export * from './NeuralInterop';
 export * from './LevelGenerator';
