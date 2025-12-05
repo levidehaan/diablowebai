@@ -4,6 +4,18 @@ This document tracks planned upgrades for the AI-driven game modification system
 
 ---
 
+## Technical Documentation
+
+Detailed technical documentation has been created in the `docs/` directory:
+
+| Document | Description |
+|----------|-------------|
+| [docs/MPQ_STRUCTURE.md](docs/MPQ_STRUCTURE.md) | MPQ archive format, 2,907 files catalogued, all file types |
+| [docs/WASM_INTERFACE.md](docs/WASM_INTERFACE.md) | WASM engine interface, worker protocol, memory access |
+| [docs/GAME_DATA_FORMATS.md](docs/GAME_DATA_FORMATS.md) | DUN format, 100+ monsters, 64+ objects, quest triggers |
+
+---
+
 ## Table of Contents
 
 1. [Core Architecture](#1-core-architecture)
@@ -21,32 +33,32 @@ This document tracks planned upgrades for the AI-driven game modification system
 ## 1. Core Architecture
 
 ### 1.1 MPQ Structure Understanding
-- [ ] Document all file types in spawn.mpq and their purposes
-  - [ ] DUN files (level layouts, quest set-pieces)
-  - [ ] CEL/CL2 files (sprites, animations)
-  - [ ] PAL files (color palettes)
-  - [ ] TIL files (tile definitions)
-  - [ ] MIN files (miniset definitions)
-  - [ ] SOL files (solidity/collision data)
-  - [ ] AMP files (automap data)
-  - [ ] TXT files (game data tables)
-- [ ] Map which files control which game aspects
-- [ ] Create schema documentation for each modifiable file type
+- [x] Document all file types in spawn.mpq and their purposes *(see [docs/MPQ_STRUCTURE.md](docs/MPQ_STRUCTURE.md))*
+  - [x] DUN files (level layouts, quest set-pieces)
+  - [x] CEL/CL2 files (sprites, animations)
+  - [x] PAL files (color palettes)
+  - [x] TIL files (tile definitions)
+  - [x] MIN files (miniset definitions)
+  - [x] SOL files (solidity/collision data)
+  - [x] AMP files (automap data)
+  - [ ] TXT files (game data tables) - *not present in spawn.mpq*
+- [x] Map which files control which game aspects
+- [x] Create schema documentation for each modifiable file type
 
 ### 1.2 Engine Parameter Discovery
-- [ ] Identify all configurable dungeon generation parameters in the WASM engine
-  - [ ] Level count per dungeon type
-  - [ ] Room density and size ranges
-  - [ ] Corridor width and branching
-  - [ ] Special room frequency
-- [ ] Document monster spawn parameters
-  - [ ] Monster type pools per level
-  - [ ] Spawn density
-  - [ ] Difficulty scaling
-- [ ] Document item/loot parameters
-  - [ ] Chest/barrel density
-  - [ ] Item quality distribution
-  - [ ] Gold drop rates
+- [x] Identify all configurable dungeon generation parameters in the WASM engine *(see [docs/WASM_INTERFACE.md](docs/WASM_INTERFACE.md))*
+  - [x] Level count per dungeon type
+  - [x] Room density and size ranges
+  - [x] Corridor width and branching
+  - [x] Special room frequency
+- [x] Document monster spawn parameters *(see [docs/GAME_DATA_FORMATS.md](docs/GAME_DATA_FORMATS.md))*
+  - [x] Monster type pools per level
+  - [x] Spawn density
+  - [x] Difficulty scaling
+- [x] Document item/loot parameters
+  - [x] Chest/barrel density
+  - [x] Item quality distribution
+  - [x] Gold drop rates
 
 ### 1.3 Data Flow Pipeline
 - [ ] Design unified pipeline: AI Intent → Parameters → MPQ Build → Game Load
