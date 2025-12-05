@@ -328,14 +328,18 @@ class App extends React.Component {
       // Store original for restoration if needed
       this.originalSpawnMpq = fs.files.get('spawn.mpq');
 
+      // CRITICAL: Make a copy of the buffer BEFORE it gets transferred to the worker
+      // The worker transfer will detach the original buffer, making it unusable
+      const mpqCopy = new Uint8Array(modifiedMpqData);
+
       // THE CRITICAL SWAP - must happen before game init
       fs.files.set('spawn.mpq', modifiedMpqData);
 
       console.log('[App] MPQ swapped successfully, starting game...');
 
-      // Store reference to modified MPQ
+      // Store the COPY in state (not the original that will be detached)
       this.setState({
-        modifiedMpq: modifiedMpqData,
+        modifiedMpq: mpqCopy,
         showModEditor: false,
         modLoadFeedback: { status: 'loading', message: 'Starting modded game...' },
       });
