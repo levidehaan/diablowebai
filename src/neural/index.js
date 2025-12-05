@@ -164,6 +164,9 @@ export {
   AICommandProcessor,
 } from './VisualGridSystem';
 
+// Export AI Debug Panel (user visibility)
+export { AIDebugPanel, AIDebugButton } from './AIDebugPanel';
+
 // Export utilities from each module
 export * from './NeuralInterop';
 export * from './LevelGenerator';

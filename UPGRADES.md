@@ -250,17 +250,19 @@ Detailed technical documentation has been created in the `docs/` directory:
 
 ## 6. User Visibility & Debug UI
 
+> **Status**: Core debug panel implemented in [src/neural/AIDebugPanel.js](src/neural/AIDebugPanel.js)
+
 ### 6.1 AI Decision Viewer
-- [ ] Real-time display of AI reasoning
-  - [ ] Current task/goal
-  - [ ] Grid images being analyzed
-  - [ ] Commands being generated
-  - [ ] Validation results
-- [ ] Expandable/collapsible sections
-- [ ] Timestamp for each decision
+- [x] Real-time display of AI reasoning *(see AIDebugPanel)*
+  - [x] Event log with timestamps
+  - [ ] Grid images being analyzed - *pending grid viewer integration*
+  - [ ] Commands being generated - *pending*
+  - [ ] Validation results - *pending*
+- [x] Expandable/collapsible sections
+- [x] Timestamp for each decision
 
 ### 6.2 Grid Visualization Panel
-- [ ] Interactive map viewer
+- [ ] Interactive map viewer - *pending React component*
   - [ ] Pan and zoom controls
   - [ ] Layer toggles (terrain, objects, NPCs, spawn zones)
   - [ ] Coordinate display on hover
@@ -269,35 +271,36 @@ Detailed technical documentation has been created in the `docs/` directory:
 - [ ] Highlight changes since last update
 
 ### 6.3 Dungeon Configuration Panel
-- [ ] Visual dungeon structure
-  - [ ] Level depth visualization
-  - [ ] Monster distribution charts
-  - [ ] Loot distribution charts
-  - [ ] Boss placement indicators
-- [ ] Editable parameters (user can tweak AI's choices)
-- [ ] Validation warnings display
+- [x] Visual dungeon structure *(see DungeonConfigPanel in AIDebugPanel)*
+  - [x] Level depth visualization (16-level grid)
+  - [ ] Monster distribution charts - *future*
+  - [ ] Loot distribution charts - *future*
+  - [x] Boss placement indicators
+- [ ] Editable parameters (user can tweak AI's choices) - *future*
+- [ ] Validation warnings display - *pending*
 
 ### 6.4 Story & Dialogue Preview
-- [ ] Campaign storyline viewer
+- [ ] Campaign storyline viewer - *future*
   - [ ] Act/chapter breakdown
   - [ ] Plot summary per section
   - [ ] Key characters list
-- [ ] Dialogue preview
+- [ ] Dialogue preview - *future*
   - [ ] NPC conversation trees
   - [ ] Quest dialogue sequences
   - [ ] Dynamic dialogue variables
-- [ ] Quest flow diagram
+- [ ] Quest flow diagram - *future*
   - [ ] Quest dependencies
   - [ ] Unlock conditions
   - [ ] Rewards
 
 ### 6.5 Build Progress Monitor
-- [ ] Step-by-step build visualization
-  - [ ] Current phase (generating, converting, packing)
-  - [ ] File-by-file progress
-  - [ ] Error/warning log
-- [ ] Estimated time remaining
-- [ ] Cancel/pause functionality
+- [x] Step-by-step build visualization *(see PipelineStatusPanel)*
+  - [x] Current phase/stage indicator
+  - [x] Progress bar
+  - [ ] File-by-file progress - *future*
+  - [ ] Error/warning log - *pending*
+- [ ] Estimated time remaining - *future*
+- [ ] Cancel/pause functionality - *future*
 
 ---
 
