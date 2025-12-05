@@ -247,6 +247,31 @@ export {
 // Export AI Debug Panel (user visibility)
 export { AIDebugPanel, AIDebugButton } from './AIDebugPanel';
 
+// Export Error Boundary System (Section 9)
+export {
+  ErrorBoundary,
+  ErrorInfo,
+  errorReporter,
+  ErrorReporter,
+  ErrorType,
+  ErrorSeverity,
+  ErrorDisplay,
+  ErrorNotification,
+  handleMPQError,
+  handleWASMError,
+  handleNetworkError,
+  withErrorBoundary,
+} from './ErrorBoundary';
+
+// Export Logger System (Section 9)
+export {
+  logger,
+  loggers,
+  LogLevel,
+  LogEntry,
+  CategoryLogger,
+} from './Logger';
+
 // Export utilities from each module
 export * from './NeuralInterop';
 export * from './LevelGenerator';

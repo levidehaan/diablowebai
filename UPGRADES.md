@@ -422,6 +422,8 @@ Detailed technical documentation has been created in the `docs/` directory:
 
 ## 9. Current Issues & Fixes
 
+> **Status**: Core error handling implemented in [src/neural/ErrorBoundary.js](src/neural/ErrorBoundary.js), [src/neural/Logger.js](src/neural/Logger.js)
+
 ### 9.1 Completed Fixes
 - [x] Fix AI editor overlay blocking close button (z-index conflict)
 - [x] Add overlay backdrop to ModEditor for consistency
@@ -429,23 +431,41 @@ Detailed technical documentation has been created in the `docs/` directory:
 - [x] Fix detached ArrayBuffer error when reopening ModEditor
   - Root cause: Worker transfer detaches buffers
   - Fix: Make copy of MPQ buffer before worker transfer
+- [x] Add proper MPQ download after build *(see ModEditor.js)*
+  - [x] Auto-download modified MPQ when "Play Modded" is clicked
+  - [x] Show download notice with filename
+  - [x] Download button in build success state
+- [x] Fix ModEditor spawn.mpq loading on reopen
+  - [x] Buffer copy stored in state
+  - [x] Buffer validation before parsing
+- [x] Improve error messages for MPQ loading failures *(see ErrorBoundary.js)*
+  - [x] Comprehensive ErrorInfo class with context tracking
+  - [x] MPQ-specific error handler (`handleMPQError`)
+  - [x] WASM-specific error handler (`handleWASMError`)
+  - [x] Network error handler (`handleNetworkError`)
 
 ### 9.2 Pending Fixes
-- [ ] Add proper MPQ download after build
-  - [ ] Auto-download modified MPQ when "Play Modded" is clicked
-  - [ ] Show download notice with filename
-  - [ ] "Load MPQ from Disk" button for reloading
-- [ ] Fix ModEditor not loading spawn.mpq on reopen
-  - [ ] Use the buffer copy stored in state
-  - [ ] Validate buffer before attempting to parse
-- [ ] Improve error messages for MPQ loading failures
-
-### 9.3 Technical Debt
 - [ ] Consolidate NeuralConfig across different modules
 - [ ] Unify AI provider handling (OpenRouter vs direct API)
 - [ ] Clean up mock generation fallback logic
-- [ ] Add comprehensive error boundaries
-- [ ] Improve logging for debugging
+
+### 9.3 Error Handling & Debugging *(Implemented)*
+- [x] Comprehensive error boundaries *(see ErrorBoundary.js)*
+  - [x] React ErrorBoundary component with recovery UI
+  - [x] ErrorInfo structured error class
+  - [x] ErrorReporter centralized reporting system
+  - [x] Error severity levels (low, medium, high, critical)
+  - [x] Error types (network, wasm, mpq, render, validation, etc.)
+  - [x] User-friendly error display components
+  - [x] `withErrorBoundary` HOC for wrapping components
+- [x] Structured logging system *(see Logger.js)*
+  - [x] Multiple log levels (DEBUG, INFO, WARN, ERROR, SILENT)
+  - [x] Category-specific loggers (MPQ, Quest, Dialogue, AI, WASM, etc.)
+  - [x] Performance timing utilities
+  - [x] Log history with filtering and export
+  - [x] Console formatting with colors
+  - [x] Subscriber system for log listeners
+  - [x] localStorage persistence of log level
 
 ---
 
@@ -492,4 +512,4 @@ Detailed technical documentation has been created in the `docs/` directory:
 
 ---
 
-*Last Updated: December 2024*
+*Last Updated: December 5, 2024*
