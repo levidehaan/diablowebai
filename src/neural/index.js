@@ -75,6 +75,50 @@ export {
   validateLevel as validateLevelData,
   validateQuest as validateQuestData,
 } from './MPQValidator';
+
+// Export Quest Schema System (Section 7.1)
+export {
+  Quest,
+  QuestStage,
+  QuestObjective as QuestSchemaObjective,
+  QuestTrigger,
+  QuestRewards,
+  QuestBuilder,
+  QuestTemplates,
+  QuestStatus as QuestSchemaStatus,
+  ObjectiveStatus,
+  TriggerType as QuestTriggerType,
+  RewardType,
+  QuestDifficulty,
+  QuestCategory,
+} from './QuestSchema';
+
+// Export Dialogue System (Section 7.2)
+export {
+  dialogueManager,
+  DialogueManager,
+  DialogueTree,
+  DialogueNode,
+  DialogueHistory,
+  DialogueBuilder,
+  DialoguePresets,
+  DialogueNodeType,
+  ConditionType,
+  ActionType as DialogueActionType,
+  evaluateCondition,
+  substituteVariables,
+} from './DialogueSystem';
+
+// Export Quest UI Components (Section 7.3)
+export {
+  QuestLogPanel,
+  QuestTracker,
+  QuestNotificationContainer,
+  RewardPopup,
+  DialogueBox,
+  useQuestNotifications,
+} from './QuestUI';
+
 export { LevelPreview, ASCIIPreview, MiniMap, THEME_COLORS as PREVIEW_THEME_COLORS } from './LevelPreview';
 export { default as LevelValidator, validateLevel, checkPath, analyzeAreas, VALIDATION_STATUS } from './LevelValidator';
 export { default as CampaignConverter, convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
