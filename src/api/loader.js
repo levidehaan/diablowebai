@@ -78,6 +78,7 @@ async function do_load_game(api, audio, mpq, spawn, options = {}) {
       worker.addEventListener("message", ({data}) => {
         switch (data.action) {
         case "loaded":
+          console.log('[Loader] Game loaded signal received from worker');
           resolve((func, ...params) => worker.postMessage({action: "event", func, params}));
           break;
         case "render":

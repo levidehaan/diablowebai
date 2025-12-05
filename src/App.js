@@ -676,6 +676,7 @@ class App extends React.Component {
       document.addEventListener('pointerlockchange', this.onPointerLockChange);
       window.addEventListener('resize', this.onResize);
 
+      console.log('[App] Game loaded successfully, setting started=true');
       this.setState({started: true});
     }, e => this.onError(e.message, e.stack));
   }
