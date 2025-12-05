@@ -186,29 +186,43 @@ Detailed technical documentation has been created in the `docs/` directory:
 
 ## 4. MPQ Content Management
 
+> **Status**: Core systems implemented in [src/neural/MPQBuilder.js](src/neural/MPQBuilder.js), [src/neural/AssetCatalog.js](src/neural/AssetCatalog.js), [src/neural/MPQValidator.js](src/neural/MPQValidator.js)
+
 ### 4.1 MPQ Builder Improvements
-- [ ] Full MPQ creation (not just modification)
-  - [ ] Create new MPQ from scratch with only needed files
-  - [ ] Proper hash table and block table generation
-  - [ ] File compression support (PKWARE, Huffman)
-- [ ] File type handlers
-  - [ ] DUN file builder (level layouts)
-  - [ ] Monster data modifier
-  - [ ] Item data modifier
-  - [ ] Quest data builder
-  - [ ] Dialogue text packer
+- [x] Full MPQ creation (not just modification) *(see MPQBuilder class)*
+  - [x] Create new MPQ from scratch with only needed files
+  - [x] Proper hash table and block table generation
+  - [ ] File compression support (PKWARE, Huffman) - *basic support, PKWARE pending*
+- [x] File type handlers
+  - [x] DUN file builder (level layouts) *(see DUNBuilder class)*
+  - [x] Monster data modifier *(see MonsterDataBuilder class)*
+  - [x] Object/Item data modifier *(see ObjectDataBuilder class)*
+  - [ ] Quest data builder - *pending quest format definition*
+  - [ ] Dialogue text packer - *pending dialogue system*
 
 ### 4.2 Asset Management
-- [ ] Catalog all available sprites/textures in spawn.mpq
-- [ ] Asset reuse mapping (which assets can be repurposed)
-- [ ] Asset combination rules (valid tile combinations)
-- [ ] Missing asset fallback system
+- [x] Catalog all available sprites/textures in spawn.mpq *(see AssetCatalog)*
+  - [x] Monster sprites (20+ monster types, 8 directions, animations)
+  - [x] Object sprites (containers, shrines, decorative)
+  - [x] Tile assets by theme (Cathedral, Catacombs, Caves, Hell, Town)
+- [x] Asset reuse mapping (which assets can be repurposed) *(see ASSET_SUBSTITUTIONS)*
+- [x] Asset combination rules (valid tile combinations) *(see COMBINATION_RULES)*
+- [ ] Missing asset fallback system - *future enhancement*
 
 ### 4.3 Validation & Testing
-- [ ] MPQ integrity checker
-- [ ] Level walkability validator
-- [ ] Quest completability checker
-- [ ] Performance impact estimator
+- [x] MPQ integrity checker *(see MPQValidator.validateMPQ())*
+  - [x] Header validation (magic, sizes, offsets)
+  - [x] Hash table validation
+  - [x] Block table validation
+- [x] Level walkability validator *(see MPQValidator.validateWalkability())*
+  - [x] Flood-fill reachability analysis
+  - [x] Disconnected area detection
+  - [x] Stairs/exit validation
+- [x] Quest completability checker *(see MPQValidator.validateQuest())*
+  - [x] Kill objective feasibility
+  - [x] Boss existence validation
+  - [x] Stage trigger validation
+- [ ] Performance impact estimator - *future enhancement*
 
 ---
 

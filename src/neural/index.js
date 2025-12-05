@@ -39,6 +39,42 @@ export { default as questTriggerManager, QuestTriggerManager, Trigger, TriggerBu
 export { MOD_TOOLS, ModToolExecutor } from './ModTools';
 export { ModEditor, ModEditorButton } from './ModEditor';
 export { MPQWriter } from './MPQWriter';
+export {
+  MPQBuilder,
+  DUNBuilder,
+  MonsterDataBuilder,
+  ObjectDataBuilder,
+  DUN_TILES,
+  MONSTER_IDS,
+  MONSTER_POOLS,
+  OBJECT_IDS as MPQ_OBJECT_IDS,
+} from './MPQBuilder';
+
+// Export Asset Catalog (asset inventory and reuse mapping)
+export {
+  assetCatalog,
+  AssetCatalog,
+  AssetCategory,
+  AssetType,
+  MONSTER_ASSETS,
+  OBJECT_ASSETS,
+  TILE_ASSETS,
+  ASSET_SUBSTITUTIONS,
+  COMBINATION_RULES,
+} from './AssetCatalog';
+
+// Export MPQ Validator (integrity checking and level validation)
+export {
+  mpqValidator,
+  MPQValidator,
+  ValidationReport,
+  ValidationResult,
+  ValidationSeverity,
+  ValidationType,
+  validateMPQ,
+  validateLevel as validateLevelData,
+  validateQuest as validateQuestData,
+} from './MPQValidator';
 export { LevelPreview, ASCIIPreview, MiniMap, THEME_COLORS as PREVIEW_THEME_COLORS } from './LevelPreview';
 export { default as LevelValidator, validateLevel, checkPath, analyzeAreas, VALIDATION_STATUS } from './LevelValidator';
 export { default as CampaignConverter, convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
