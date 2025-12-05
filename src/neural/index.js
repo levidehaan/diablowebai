@@ -16,6 +16,8 @@ import campaignGenerator from './CampaignGenerator';
 import worldBuilder from './WorldBuilder';
 import GameStorage from './GameStorage';
 import { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
+import { questTriggerSystem } from './QuestTriggerSystem';
+import { gameEventEmitter } from './GameEventEmitter';
 
 // Re-export individual modules
 export { default as NeuralConfig } from './config';
@@ -37,6 +39,86 @@ export { default as questTriggerManager, QuestTriggerManager, Trigger, TriggerBu
 export { MOD_TOOLS, ModToolExecutor } from './ModTools';
 export { ModEditor, ModEditorButton } from './ModEditor';
 export { MPQWriter } from './MPQWriter';
+export {
+  MPQBuilder,
+  DUNBuilder,
+  MonsterDataBuilder,
+  ObjectDataBuilder,
+  DUN_TILES,
+  MONSTER_IDS,
+  MONSTER_POOLS,
+  OBJECT_IDS as MPQ_OBJECT_IDS,
+} from './MPQBuilder';
+
+// Export Asset Catalog (asset inventory and reuse mapping)
+export {
+  assetCatalog,
+  AssetCatalog,
+  AssetCategory,
+  AssetType,
+  MONSTER_ASSETS,
+  OBJECT_ASSETS,
+  TILE_ASSETS,
+  ASSET_SUBSTITUTIONS,
+  COMBINATION_RULES,
+} from './AssetCatalog';
+
+// Export MPQ Validator (integrity checking and level validation)
+export {
+  mpqValidator,
+  MPQValidator,
+  ValidationReport,
+  ValidationResult,
+  ValidationSeverity,
+  ValidationType,
+  validateMPQ,
+  validateLevel as validateLevelData,
+  validateQuest as validateQuestData,
+} from './MPQValidator';
+
+// Export Quest Schema System (Section 7.1)
+export {
+  Quest,
+  QuestStage,
+  QuestObjective as QuestSchemaObjective,
+  QuestTrigger,
+  QuestRewards,
+  QuestBuilder,
+  QuestTemplates,
+  QuestStatus as QuestSchemaStatus,
+  ObjectiveStatus,
+  TriggerType as QuestTriggerType,
+  RewardType,
+  QuestDifficulty,
+  QuestCategory,
+} from './QuestSchema';
+
+// Export Dialogue System (Section 7.2)
+export {
+  dialogueManager,
+  DialogueManager,
+  DialogueTree,
+  DialogueNode,
+  DialogueHistory,
+  DialogueBuilder,
+  DialoguePresets,
+  DialogueNodeType,
+  ConditionType,
+  ActionType as DialogueActionType,
+  evaluateCondition,
+  substituteVariables,
+} from './DialogueSystem';
+
+// Export Quest UI Components (Section 7.3)
+export {
+  QuestLogPanel,
+  QuestTracker,
+  QuestNotificationContainer,
+  RewardPopup,
+  DialogueBox,
+  useQuestNotifications,
+} from './QuestUI';
+
 export { LevelPreview, ASCIIPreview, MiniMap, THEME_COLORS as PREVIEW_THEME_COLORS } from './LevelPreview';
 export { default as LevelValidator, validateLevel, checkPath, analyzeAreas, VALIDATION_STATUS } from './LevelValidator';
 export { default as CampaignConverter, convertCampaign, convertLevel, getValidationReport } from './CampaignConverter';
@@ -136,6 +218,60 @@ export { AssetGeneratorAdapter, createAssetGenerator, assetGenerator } from './A
 // Export Character Creator UI components
 export { CharacterCreator } from './CharacterCreator';
 
+// Export Game Event System (for AI/quest integration)
+export { gameEventDetector, GameEventDetector, GameEventType } from './GameEventDetector';
+export { gameEventEmitter } from './GameEventEmitter';
+export { questTriggerSystem, QuestTriggerSystem, QuestStatus, TriggerType } from './QuestTriggerSystem';
+
+// Export Data Flow Pipeline (AI Intent → Parameters → MPQ → Game)
+export {
+  dataFlowPipeline,
+  PipelineStage,
+  PipelineStatus,
+} from './DataFlowPipeline';
+
+// Export Visual Grid System (for AI vision/interaction)
+export {
+  visualGridSystem,
+  VisualGridSystem,
+  TileType,
+  ObjectType,
+  ZoomLevel,
+  CommandType,
+  CoordinateSystem,
+  GridState,
+  GridImageGenerator,
+  AICommandProcessor,
+} from './VisualGridSystem';
+
+// Export AI Debug Panel (user visibility)
+export { AIDebugPanel, AIDebugButton } from './AIDebugPanel';
+
+// Export Error Boundary System (Section 9)
+export {
+  ErrorBoundary,
+  ErrorInfo,
+  errorReporter,
+  ErrorReporter,
+  ErrorType,
+  ErrorSeverity,
+  ErrorDisplay,
+  ErrorNotification,
+  handleMPQError,
+  handleWASMError,
+  handleNetworkError,
+  withErrorBoundary,
+} from './ErrorBoundary';
+
+// Export Logger System (Section 9)
+export {
+  logger,
+  loggers,
+  LogLevel,
+  LogEntry,
+  CategoryLogger,
+} from './Logger';
+
 // Export utilities from each module
 export * from './NeuralInterop';
 export * from './LevelGenerator';
@@ -213,6 +349,9 @@ class NeuralAugmentation {
       narrativeEngine.initialize();
       commanderAI.initialize();
       assetPipeline.initialize();
+
+      // Initialize game event system (for quest triggers)
+      questTriggerSystem.initialize();
 
       // Setup cross-module event handlers
       this.setupEventHandlers();
@@ -515,6 +654,10 @@ class NeuralAugmentation {
    * Cleanup and destroy
    */
   destroy() {
+    // Cleanup event systems
+    questTriggerSystem.destroy();
+    gameEventEmitter.reset();
+
     commanderAI.clear();
     levelGenerator.clearCache();
     narrativeEngine.clearOverrides();

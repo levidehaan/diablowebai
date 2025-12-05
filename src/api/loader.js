@@ -2,6 +2,7 @@ import Worker from './game.worker.js';
 import init_sound from './sound';
 import load_spawn from './load_spawn';
 import webrtc_open from './webrtc';
+import { gameEventEmitter } from '../neural/GameEventEmitter';
 
 function onRender(api, ctx, {bitmap, images, text, clip, belt}) {
   if (bitmap) {
@@ -122,6 +123,19 @@ async function do_load_game(api, audio, mpq, spawn, options = {}) {
           for (let packet of data.batch) {
             webrtc.send(packet);
           }
+          break;
+        case "game_events":
+          // Forward game events to the main thread event system
+          if (data.events && data.events.length > 0) {
+            gameEventEmitter.processBatch(data.events);
+          }
+          break;
+        case "wasm_discovery":
+          // WASM exports discovery - useful for debugging
+          if (api.onWasmDiscovery) {
+            api.onWasmDiscovery(data.exports, data.categories);
+          }
+          console.log('[Loader] WASM exports discovered:', data.exports?.length || 0);
           break;
         default:
         }
