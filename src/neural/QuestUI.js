@@ -550,8 +550,8 @@ export function DialogueBox({
       clearInterval(typewriterRef.current);
       setDisplayedText(nodeData.text);
       setIsTyping(false);
-    } else if (!nodeData.choices) {
-      onAdvance?.();
+    } else if (!nodeData.choices && onAdvance) {
+      onAdvance();
     }
   };
 
