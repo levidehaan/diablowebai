@@ -140,8 +140,8 @@ export {
   ItemDatabase,
   Item,
   QuestDatabase,
-  Quest,
-  QuestObjective,
+  Quest as BlueprintQuest,
+  QuestObjective as BlueprintQuestObjective,
   AssetManifest,
   AssetRequirement,
   CompletionCriteria,
@@ -221,7 +221,7 @@ export { CharacterCreator } from './CharacterCreator';
 // Export Game Event System (for AI/quest integration)
 export { gameEventDetector, GameEventDetector, GameEventType } from './GameEventDetector';
 export { gameEventEmitter } from './GameEventEmitter';
-export { questTriggerSystem, QuestTriggerSystem, QuestStatus, TriggerType } from './QuestTriggerSystem';
+export { questTriggerSystem, QuestStatus, TriggerType } from './QuestTriggerSystem';
 
 // Export Data Flow Pipeline (AI Intent → Parameters → MPQ → Game)
 export {
@@ -252,15 +252,14 @@ export {
   ErrorBoundary,
   ErrorInfo,
   errorReporter,
-  ErrorReporter,
   ErrorType,
   ErrorSeverity,
   ErrorDisplay,
-  ErrorNotification,
+  ErrorMessage,
   handleMPQError,
   handleWASMError,
-  handleNetworkError,
-  withErrorBoundary,
+  withErrorHandling,
+  safeFetch,
 } from './ErrorBoundary';
 
 // Export Logger System (Section 9)
