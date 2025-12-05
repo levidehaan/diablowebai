@@ -5,6 +5,7 @@ import SpawnModule from './DiabloSpawn.jscc';
 import axios from 'axios';
 
 import websocket_open from './websocket';
+import { gameEventDetector, GameEventType } from '../neural/GameEventDetector';
 
 const DiabloSize = 1466809;
 const SpawnSize = 1337416;
@@ -406,6 +407,14 @@ async function init_game(mpq, spawn, offscreen) {
   //wasm._SNet_InitWebsocket();
   wasm._DApi_Init(Math.floor(performance.now()), offscreen ? 1 : 0, parseInt(vers[1]), parseInt(vers[2]), parseInt(vers[3]));
 
+  // Initialize Game Event Detector for AI quest system
+  try {
+    gameEventDetector.initialize(wasm);
+    console.log('[Worker] Game Event Detector initialized');
+  } catch (e) {
+    console.warn('[Worker] Game Event Detector init failed:', e);
+  }
+
   // Discovery: Log all WASM exports for AI integration research
   if (typeof console !== 'undefined') {
     const wasmExports = Object.keys(wasm).filter(k => k.startsWith('_'));
@@ -439,6 +448,22 @@ async function init_game(mpq, spawn, offscreen) {
 
   setInterval(() => {
     call_api("DApi_Render", Math.floor(performance.now()));
+
+    // Process game events for AI/quest system
+    try {
+      gameEventDetector.processFrame();
+
+      // Flush and send events to main thread
+      if (gameEventDetector.hasPendingEvents()) {
+        const events = gameEventDetector.flushEvents();
+        worker.postMessage({
+          action: 'game_events',
+          events: events
+        });
+      }
+    } catch (e) {
+      // Don't spam errors - event detection is non-critical
+    }
   }, 50);
 }
 

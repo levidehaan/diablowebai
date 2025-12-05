@@ -16,6 +16,8 @@ import campaignGenerator from './CampaignGenerator';
 import worldBuilder from './WorldBuilder';
 import GameStorage from './GameStorage';
 import { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
+import { questTriggerSystem } from './QuestTriggerSystem';
+import { gameEventEmitter } from './GameEventEmitter';
 
 // Re-export individual modules
 export { default as NeuralConfig } from './config';
@@ -136,6 +138,11 @@ export { AssetGeneratorAdapter, createAssetGenerator, assetGenerator } from './A
 // Export Character Creator UI components
 export { CharacterCreator } from './CharacterCreator';
 
+// Export Game Event System (for AI/quest integration)
+export { gameEventDetector, GameEventDetector, GameEventType } from './GameEventDetector';
+export { gameEventEmitter } from './GameEventEmitter';
+export { questTriggerSystem, QuestTriggerSystem, QuestStatus, TriggerType } from './QuestTriggerSystem';
+
 // Export utilities from each module
 export * from './NeuralInterop';
 export * from './LevelGenerator';
@@ -213,6 +220,9 @@ class NeuralAugmentation {
       narrativeEngine.initialize();
       commanderAI.initialize();
       assetPipeline.initialize();
+
+      // Initialize game event system (for quest triggers)
+      questTriggerSystem.initialize();
 
       // Setup cross-module event handlers
       this.setupEventHandlers();
@@ -515,6 +525,10 @@ class NeuralAugmentation {
    * Cleanup and destroy
    */
   destroy() {
+    // Cleanup event systems
+    questTriggerSystem.destroy();
+    gameEventEmitter.reset();
+
     commanderAI.clear();
     levelGenerator.clearCache();
     narrativeEngine.clearOverrides();

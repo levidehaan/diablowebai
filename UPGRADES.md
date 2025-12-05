@@ -211,36 +211,36 @@ Detailed technical documentation has been created in the `docs/` directory:
 ## 5. Event System Integration
 
 ### 5.1 Game Event Discovery
-- [ ] Document all hookable game events
-  - [ ] `MONSTER_KILLED` (monster_id, killer, location)
-  - [ ] `BOSS_KILLED` (boss_id, killer, location)
-  - [ ] `LEVEL_ENTERED` (level_id, player)
-  - [ ] `LEVEL_CLEARED` (level_id, player)
-  - [ ] `ITEM_PICKED_UP` (item_id, player)
-  - [ ] `QUEST_ITEM_FOUND` (quest_id, item_id)
-  - [ ] `NPC_TALKED` (npc_id, dialogue_id)
-  - [ ] `SHRINE_ACTIVATED` (shrine_type, location)
-  - [ ] `PLAYER_DIED` (player, killer, location)
-  - [ ] `GOLD_COLLECTED` (amount, total)
+- [x] Document all hookable game events *(see [src/neural/GameEventDetector.js](src/neural/GameEventDetector.js))*
+  - [x] `MONSTER_KILLED` (monster_id, killer, location)
+  - [x] `BOSS_KILLED` (boss_id, killer, location)
+  - [x] `LEVEL_ENTERED` (level_id, player)
+  - [x] `LEVEL_CLEARED` (level_id, player)
+  - [ ] `ITEM_PICKED_UP` (item_id, player) - *requires item tracking*
+  - [ ] `QUEST_ITEM_FOUND` (quest_id, item_id) - *requires item tracking*
+  - [ ] `NPC_TALKED` (npc_id, dialogue_id) - *requires NPC interaction hooks*
+  - [x] `SHRINE_ACTIVATED` (shrine_type, location)
+  - [x] `PLAYER_DIED` (player, killer, location)
+  - [x] `GOLD_COLLECTED` (amount, total)
 
 ### 5.2 Event Hooks Implementation
-- [ ] Create event listener system in JavaScript
-- [ ] Bridge WASM events to JavaScript callbacks
-- [ ] Event filtering (only subscribe to relevant events)
-- [ ] Event batching for performance
+- [x] Create event listener system in JavaScript *(see [src/neural/GameEventEmitter.js](src/neural/GameEventEmitter.js))*
+- [x] Bridge WASM events to JavaScript callbacks *(via game.worker.js render loop)*
+- [x] Event filtering (only subscribe to relevant events)
+- [x] Event batching for performance *(events batched per frame)*
 
 ### 5.3 Quest Trigger System
-- [ ] Define quest trigger conditions
-  - [ ] Kill count triggers
-  - [ ] Boss kill triggers
-  - [ ] Item collection triggers
-  - [ ] Location visited triggers
-  - [ ] NPC dialogue triggers
-  - [ ] Time-based triggers
-- [ ] Quest state machine
-  - [ ] Quest stages (not_started, in_progress, complete, failed)
-  - [ ] Stage transition conditions
-  - [ ] Reward distribution on completion
+- [x] Define quest trigger conditions *(see [src/neural/QuestTriggerSystem.js](src/neural/QuestTriggerSystem.js))*
+  - [x] Kill count triggers
+  - [x] Boss kill triggers
+  - [ ] Item collection triggers - *pending item tracking*
+  - [x] Location visited triggers
+  - [ ] NPC dialogue triggers - *pending NPC hooks*
+  - [ ] Time-based triggers - *future enhancement*
+- [x] Quest state machine
+  - [x] Quest stages (not_started, in_progress, complete, failed)
+  - [x] Stage transition conditions
+  - [ ] Reward distribution on completion - *pending*
 
 ---
 
