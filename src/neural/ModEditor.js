@@ -548,15 +548,32 @@ export class ModEditor extends Component {
 
     try {
       const fileType = getFileType(path);
-      const data = this.mpqReader.read(path);
 
-      if (!data) {
-        console.warn(`[ModEditor] Could not read file: ${path}`);
+      // First check if file exists in the MPQ
+      const fileInfo = this.mpqReader.getFileInfo ? this.mpqReader.getFileInfo(path) : null;
+      if (!fileInfo && this.mpqReader.hasFile && !this.mpqReader.hasFile(path)) {
+        console.warn(`[ModEditor] File not found in MPQ: ${path}`);
         this.setState({
           selectedFile: path,
           selectedFileData: null,
           selectedFileType: fileType,
-          error: `Could not read file: ${path}`,
+          error: `File not found in MPQ: ${path}`,
+        });
+        return;
+      }
+
+      // Try to read the file
+      const data = this.mpqReader.read(path);
+
+      if (!data) {
+        // File exists but couldn't be read (compression not supported, etc.)
+        const info = fileInfo || {};
+        console.warn(`[ModEditor] Could not decompress file: ${path}`, info);
+        this.setState({
+          selectedFile: path,
+          selectedFileData: null,
+          selectedFileType: fileType,
+          error: `Could not decompress file: ${path} (flags: 0x${(info.flags || 0).toString(16)})`,
         });
         return;
       }
