@@ -10,6 +10,36 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
+// Monster data for placement palette
+const COMMON_MONSTERS = [
+  { id: 1, name: 'Zombie', color: '#4a4' },
+  { id: 2, name: 'Ghoul', color: '#484' },
+  { id: 17, name: 'Fallen One', color: '#a44' },
+  { id: 33, name: 'Skeleton', color: '#aaa' },
+  { id: 35, name: 'Burning Dead', color: '#fa0' },
+  { id: 37, name: 'Skeleton Archer', color: '#888' },
+  { id: 49, name: 'Scavenger', color: '#840' },
+  { id: 65, name: 'Fiend', color: '#a0a' },
+  { id: 81, name: 'Flesh Clan', color: '#a80' },
+  { id: 97, name: 'Hidden', color: '#448' },
+  { id: 101, name: 'Skeleton King', color: '#ff0' },
+  { id: 102, name: 'Butcher', color: '#f00' },
+];
+
+// Object data for placement palette
+const COMMON_OBJECTS = [
+  { id: 1, name: 'Barrel', color: '#840' },
+  { id: 2, name: 'Chest', color: '#a80' },
+  { id: 3, name: 'Large Chest', color: '#fa0' },
+  { id: 5, name: 'Bookcase', color: '#642' },
+  { id: 6, name: 'Weapon Rack', color: '#666' },
+  { id: 7, name: 'Armor Stand', color: '#888' },
+  { id: 8, name: 'Skeleton', color: '#aaa' },
+  { id: 11, name: 'Shrine', color: '#88f' },
+  { id: 21, name: 'Torch', color: '#f80' },
+  { id: 33, name: 'Candle', color: '#ff8' },
+];
+
 // File type detection
 export const FILE_TYPES = {
   DUN: { ext: '.dun', name: 'Level Layout', icon: '🗺️', color: '#4a9' },
@@ -220,16 +250,22 @@ export function PaletteViewer({ data, filename }) {
 /**
  * DUNEditor - Interactive level editor
  */
-export function DUNEditor({ data, filename, onModify, tileInfo }) {
+export function DUNEditor({ data, filename, onModify, onSave }) {
   const canvasRef = useRef(null);
   const [dunData, setDunData] = useState(null);
   const [selectedTile, setSelectedTile] = useState(null);
   const [hoveredTile, setHoveredTile] = useState(null);
-  const [tool, setTool] = useState('select'); // select, paint, monster, object
+  const [tool, setTool] = useState('select'); // select, paint, monster, object, eraser
   const [paintTileId, setPaintTileId] = useState(13); // Default floor
-  const [zoom, setZoom] = useState(8);
+  const [paintMonsterId, setPaintMonsterId] = useState(33); // Default skeleton
+  const [paintObjectId, setPaintObjectId] = useState(1); // Default barrel
+  const [zoom, setZoom] = useState(10);
   const [showGrid, setShowGrid] = useState(true);
   const [layer, setLayer] = useState('base'); // base, monsters, objects, items
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isDragging, setIsDragging] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   // Parse DUN data
   useEffect(() => {
@@ -282,10 +318,95 @@ export function DUNEditor({ data, filename, onModify, tileInfo }) {
       }
 
       setDunData({ width, height, baseLayer, subLayers });
+      // Initialize history with first state
+      setHistory([{ width, height, baseLayer, subLayers }]);
+      setHistoryIndex(0);
     } catch (err) {
       console.error('Failed to parse DUN:', err);
     }
   }, [data]);
+
+  // Push state to history
+  const pushHistory = useCallback((newState) => {
+    setHistory(prev => {
+      // Remove any future states if we're not at the end
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(JSON.parse(JSON.stringify(newState)));
+      // Limit history to 50 states
+      if (newHistory.length > 50) newHistory.shift();
+      return newHistory;
+    });
+    setHistoryIndex(prev => Math.min(prev + 1, 49));
+    setHasChanges(true);
+  }, [historyIndex]);
+
+  // Undo
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      setHistoryIndex(prev => prev - 1);
+      setDunData(JSON.parse(JSON.stringify(history[historyIndex - 1])));
+    }
+  }, [historyIndex, history]);
+
+  // Redo
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex(prev => prev + 1);
+      setDunData(JSON.parse(JSON.stringify(history[historyIndex + 1])));
+    }
+  }, [historyIndex, history]);
+
+  // Export DUN to binary
+  const exportDUN = useCallback(() => {
+    if (!dunData) return null;
+
+    const { width, height, baseLayer, subLayers } = dunData;
+    const subWidth = width * 2;
+    const subHeight = height * 2;
+
+    // Calculate total size
+    const baseSize = 4 + (width * height * 2);
+    const subLayerSize = subWidth * subHeight * 2;
+    const totalSize = baseSize + (subLayerSize * 3);
+
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+    const u16 = new Uint16Array(buffer);
+
+    // Write header
+    view.setUint16(0, width, true);
+    view.setUint16(2, height, true);
+
+    // Write base layer
+    let offset = 2; // In 16-bit words
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        u16[offset++] = baseLayer[y][x];
+      }
+    }
+
+    // Write sub-layers
+    const layerOrder = ['items', 'monsters', 'objects'];
+    for (const layerName of layerOrder) {
+      const layer = subLayers[layerName] || [];
+      for (let y = 0; y < subHeight; y++) {
+        for (let x = 0; x < subWidth; x++) {
+          u16[offset++] = (layer[y] && layer[y][x]) || 0;
+        }
+      }
+    }
+
+    return new Uint8Array(buffer);
+  }, [dunData]);
+
+  // Handle save
+  const handleSave = useCallback(() => {
+    const dunBytes = exportDUN();
+    if (dunBytes && onSave) {
+      onSave(dunBytes, filename);
+      setHasChanges(false);
+    }
+  }, [exportDUN, onSave, filename]);
 
   // Render canvas
   useEffect(() => {
@@ -383,6 +504,65 @@ export function DUNEditor({ data, filename, onModify, tileInfo }) {
 
   }, [dunData, zoom, showGrid, selectedTile, hoveredTile, layer]);
 
+  // Apply modification at position
+  const applyModification = useCallback((x, y, saveHistory = true) => {
+    if (!dunData) return;
+
+    let newDunData = JSON.parse(JSON.stringify(dunData));
+
+    if (tool === 'paint') {
+      // Paint base tile
+      if (y >= 0 && y < dunData.height && x >= 0 && x < dunData.width) {
+        newDunData.baseLayer[y][x] = paintTileId;
+      }
+    } else if (tool === 'monster') {
+      // Place monster (at 2x resolution)
+      const subX = x * 2;
+      const subY = y * 2;
+      if (subY >= 0 && subY < dunData.height * 2 && subX >= 0 && subX < dunData.width * 2) {
+        if (!newDunData.subLayers.monsters[subY]) {
+          newDunData.subLayers.monsters[subY] = new Array(dunData.width * 2).fill(0);
+        }
+        newDunData.subLayers.monsters[subY][subX] = paintMonsterId;
+      }
+    } else if (tool === 'object') {
+      // Place object (at 2x resolution)
+      const subX = x * 2;
+      const subY = y * 2;
+      if (subY >= 0 && subY < dunData.height * 2 && subX >= 0 && subX < dunData.width * 2) {
+        if (!newDunData.subLayers.objects[subY]) {
+          newDunData.subLayers.objects[subY] = new Array(dunData.width * 2).fill(0);
+        }
+        newDunData.subLayers.objects[subY][subX] = paintObjectId;
+      }
+    } else if (tool === 'eraser') {
+      // Erase based on current layer
+      if (layer === 'base') {
+        newDunData.baseLayer[y][x] = 0;
+      } else if (layer === 'monsters') {
+        const subX = x * 2;
+        const subY = y * 2;
+        if (newDunData.subLayers.monsters[subY]) {
+          newDunData.subLayers.monsters[subY][subX] = 0;
+        }
+      } else if (layer === 'objects') {
+        const subX = x * 2;
+        const subY = y * 2;
+        if (newDunData.subLayers.objects[subY]) {
+          newDunData.subLayers.objects[subY][subX] = 0;
+        }
+      }
+    }
+
+    setDunData(newDunData);
+    if (saveHistory) {
+      pushHistory(newDunData);
+    }
+    if (onModify) {
+      onModify(newDunData);
+    }
+  }, [dunData, tool, paintTileId, paintMonsterId, paintObjectId, layer, pushHistory, onModify]);
+
   const handleCanvasClick = useCallback((e) => {
     if (!dunData || !canvasRef.current) return;
 
@@ -393,14 +573,8 @@ export function DUNEditor({ data, filename, onModify, tileInfo }) {
     if (x >= 0 && x < dunData.width && y >= 0 && y < dunData.height) {
       if (tool === 'select') {
         setSelectedTile({ x, y, tileId: dunData.baseLayer[y][x] });
-      } else if (tool === 'paint' && onModify) {
-        // Modify the tile
-        const newBaseLayer = dunData.baseLayer.map((row, ry) =>
-          row.map((tile, rx) => (rx === x && ry === y) ? paintTileId : tile)
-        );
-        const newDunData = { ...dunData, baseLayer: newBaseLayer };
-        setDunData(newDunData);
-        onModify(newDunData);
+      } else {
+        applyModification(x, y);
       }
     }
   }, [dunData, zoom, tool, paintTileId, onModify]);
@@ -426,6 +600,37 @@ export function DUNEditor({ data, filename, onModify, tileInfo }) {
   return (
     <div className="dun-editor">
       <div className="dun-editor-toolbar">
+        {/* Undo/Redo/Save */}
+        <div className="toolbar-group">
+          <button
+            className="tool-btn"
+            onClick={undo}
+            disabled={historyIndex <= 0}
+            title="Undo (Ctrl+Z)"
+          >
+            ↩ Undo
+          </button>
+          <button
+            className="tool-btn"
+            onClick={redo}
+            disabled={historyIndex >= history.length - 1}
+            title="Redo (Ctrl+Y)"
+          >
+            ↪ Redo
+          </button>
+          <button
+            className={`tool-btn ${hasChanges ? 'highlight' : ''}`}
+            onClick={handleSave}
+            disabled={!hasChanges}
+            title="Save changes"
+          >
+            💾 Save
+          </button>
+        </div>
+
+        <div className="toolbar-divider" />
+
+        {/* Tools */}
         <div className="toolbar-group">
           <span className="toolbar-label">Tool:</span>
           <button
@@ -440,9 +645,32 @@ export function DUNEditor({ data, filename, onModify, tileInfo }) {
             onClick={() => setTool('paint')}
             title="Paint tiles"
           >
-            🖌️ Paint
+            🖌 Paint
+          </button>
+          <button
+            className={`tool-btn ${tool === 'monster' ? 'active' : ''}`}
+            onClick={() => setTool('monster')}
+            title="Place monsters"
+          >
+            👹 Monster
+          </button>
+          <button
+            className={`tool-btn ${tool === 'object' ? 'active' : ''}`}
+            onClick={() => setTool('object')}
+            title="Place objects"
+          >
+            📦 Object
+          </button>
+          <button
+            className={`tool-btn ${tool === 'eraser' ? 'active' : ''}`}
+            onClick={() => setTool('eraser')}
+            title="Erase"
+          >
+            🧹 Erase
           </button>
         </div>
+
+        <div className="toolbar-divider" />
 
         <div className="toolbar-group">
           <span className="toolbar-label">Layer:</span>
@@ -476,19 +704,72 @@ export function DUNEditor({ data, filename, onModify, tileInfo }) {
             Grid
           </label>
         </div>
+      </div>
 
+      {/* Palette panels */}
+      <div className="dun-editor-palettes">
         {tool === 'paint' && (
-          <div className="toolbar-group">
-            <span className="toolbar-label">Tile ID:</span>
+          <div className="palette-panel">
+            <span className="palette-label">Tile:</span>
             <input
               type="number"
               min="0"
               max="500"
               value={paintTileId}
               onChange={(e) => setPaintTileId(Number(e.target.value))}
-              style={{ width: 60 }}
+              style={{ width: 50 }}
             />
             <TilePalette onSelect={setPaintTileId} selected={paintTileId} />
+          </div>
+        )}
+
+        {tool === 'monster' && (
+          <div className="palette-panel">
+            <span className="palette-label">Monster:</span>
+            <select
+              value={paintMonsterId}
+              onChange={(e) => setPaintMonsterId(Number(e.target.value))}
+            >
+              {COMMON_MONSTERS.map(m => (
+                <option key={m.id} value={m.id}>{m.name} ({m.id})</option>
+              ))}
+            </select>
+            <div className="mini-palette">
+              {COMMON_MONSTERS.slice(0, 6).map(m => (
+                <div
+                  key={m.id}
+                  className={`palette-item ${paintMonsterId === m.id ? 'selected' : ''}`}
+                  style={{ backgroundColor: m.color }}
+                  onClick={() => setPaintMonsterId(m.id)}
+                  title={m.name}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tool === 'object' && (
+          <div className="palette-panel">
+            <span className="palette-label">Object:</span>
+            <select
+              value={paintObjectId}
+              onChange={(e) => setPaintObjectId(Number(e.target.value))}
+            >
+              {COMMON_OBJECTS.map(o => (
+                <option key={o.id} value={o.id}>{o.name} ({o.id})</option>
+              ))}
+            </select>
+            <div className="mini-palette">
+              {COMMON_OBJECTS.slice(0, 6).map(o => (
+                <div
+                  key={o.id}
+                  className={`palette-item ${paintObjectId === o.id ? 'selected' : ''}`}
+                  style={{ backgroundColor: o.color }}
+                  onClick={() => setPaintObjectId(o.id)}
+                  title={o.name}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -602,6 +883,456 @@ function getTileColor(tileId) {
 }
 
 /**
+ * SOLViewer - Display collision/solid data
+ */
+export function SOLViewer({ data, filename }) {
+  const [solData, setSolData] = useState(null);
+  const [selectedCell, setSelectedCell] = useState(null);
+  const [zoom, setZoom] = useState(8);
+
+  // Collision flags
+  const SOL_FLAGS = {
+    SOLID: 0x01,
+    BLOCK_LIGHT: 0x02,
+    BLOCK_MISSILE: 0x04,
+    TRANSPARENT: 0x08,
+    TRAP: 0x10,
+    DOOR: 0x20,
+    STAIRS: 0x40,
+    UNUSED: 0x80,
+  };
+
+  useEffect(() => {
+    if (!data) return;
+
+    try {
+      const bytes = new Uint8Array(data);
+
+      // SOL files are typically headerless - try to determine dimensions
+      // Common sizes: Cathedral/Catacombs/Caves/Hell use different dimensions
+      const totalBytes = bytes.length;
+
+      // Try to find a reasonable width/height
+      // Typical SOL sizes: 40x40, 112x112 (based on level types)
+      let width = 40;
+      let height = 40;
+
+      // Calculate based on file size
+      const sqrtSize = Math.floor(Math.sqrt(totalBytes));
+      if (sqrtSize * sqrtSize === totalBytes) {
+        width = sqrtSize;
+        height = sqrtSize;
+      } else {
+        // Try common dimensions
+        const commonSizes = [40, 80, 112, 96, 120];
+        for (const size of commonSizes) {
+          if (totalBytes === size * size) {
+            width = size;
+            height = size;
+            break;
+          }
+        }
+        // Fallback to linear
+        if (width * height !== totalBytes) {
+          width = Math.min(totalBytes, 256);
+          height = Math.ceil(totalBytes / width);
+        }
+      }
+
+      // Parse grid
+      const grid = [];
+      for (let y = 0; y < height; y++) {
+        const row = [];
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          row.push(idx < bytes.length ? bytes[idx] : 0);
+        }
+        grid.push(row);
+      }
+
+      setSolData({ width, height, grid, bytes });
+    } catch (err) {
+      console.error('Failed to parse SOL:', err);
+    }
+  }, [data]);
+
+  const getCellClass = (value) => {
+    if (value === 0) return 'walkable';
+    if (value & SOL_FLAGS.SOLID) return 'solid';
+    if (value & SOL_FLAGS.DOOR) return 'door';
+    if (value & SOL_FLAGS.STAIRS) return 'stairs';
+    if (value & SOL_FLAGS.TRAP) return 'trap';
+    return 'special';
+  };
+
+  const getCellColor = (value) => {
+    if (value === 0) return '#2a4a2a'; // Walkable - green
+    if (value & SOL_FLAGS.SOLID) return '#4a2a2a'; // Solid - red
+    if (value & SOL_FLAGS.DOOR) return '#4a4a2a'; // Door - yellow
+    if (value & SOL_FLAGS.STAIRS) return '#2a2a4a'; // Stairs - blue
+    if (value & SOL_FLAGS.TRAP) return '#4a2a4a'; // Trap - purple
+    return '#3a3a3a'; // Special - gray
+  };
+
+  const getFlagList = (value) => {
+    const flags = [];
+    if (value === 0) flags.push('Walkable');
+    if (value & SOL_FLAGS.SOLID) flags.push('Solid');
+    if (value & SOL_FLAGS.BLOCK_LIGHT) flags.push('Blocks Light');
+    if (value & SOL_FLAGS.BLOCK_MISSILE) flags.push('Blocks Missiles');
+    if (value & SOL_FLAGS.TRANSPARENT) flags.push('Transparent');
+    if (value & SOL_FLAGS.TRAP) flags.push('Trap');
+    if (value & SOL_FLAGS.DOOR) flags.push('Door');
+    if (value & SOL_FLAGS.STAIRS) flags.push('Stairs');
+    return flags.join(', ') || 'None';
+  };
+
+  if (!solData) {
+    return <div className="sol-viewer-loading">Parsing collision data...</div>;
+  }
+
+  return (
+    <div className="sol-viewer">
+      <div className="sol-viewer-header">
+        <span className="sol-filename">{filename}</span>
+        <span className="sol-info">
+          {solData.width}×{solData.height} = {solData.bytes.length.toLocaleString()} bytes
+        </span>
+        <div className="sol-controls">
+          <span>Zoom:</span>
+          <input
+            type="range"
+            min="2"
+            max="16"
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+          />
+          <span>{zoom}px</span>
+        </div>
+      </div>
+
+      <div className="sol-viewer-canvas" style={{ maxHeight: '400px', overflow: 'auto' }}>
+        <div
+          className="sol-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${solData.width}, ${zoom}px)`,
+            gap: '0',
+            width: 'fit-content',
+          }}
+        >
+          {solData.grid.flatMap((row, y) =>
+            row.map((value, x) => (
+              <div
+                key={`${x}-${y}`}
+                className={`sol-cell ${getCellClass(value)}`}
+                style={{
+                  width: zoom,
+                  height: zoom,
+                  backgroundColor: getCellColor(value),
+                  border: selectedCell?.x === x && selectedCell?.y === y
+                    ? '1px solid #fff'
+                    : 'none',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setSelectedCell({ x, y, value })}
+                title={`(${x},${y}): ${value} (0x${value.toString(16).toUpperCase()})`}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      {selectedCell && (
+        <div className="sol-selection">
+          <strong>Position:</strong> ({selectedCell.x}, {selectedCell.y}) |{' '}
+          <strong>Value:</strong> {selectedCell.value} (0x{selectedCell.value.toString(16).toUpperCase()}) |{' '}
+          <strong>Flags:</strong> {getFlagList(selectedCell.value)}
+        </div>
+      )}
+
+      <div className="sol-viewer-legend">
+        <div className="legend-item">
+          <div className="legend-color" style={{ backgroundColor: '#2a4a2a' }} />
+          <span>Walkable</span>
+        </div>
+        <div className="legend-item">
+          <div className="legend-color" style={{ backgroundColor: '#4a2a2a' }} />
+          <span>Solid</span>
+        </div>
+        <div className="legend-item">
+          <div className="legend-color" style={{ backgroundColor: '#4a4a2a' }} />
+          <span>Door</span>
+        </div>
+        <div className="legend-item">
+          <div className="legend-color" style={{ backgroundColor: '#2a2a4a' }} />
+          <span>Stairs</span>
+        </div>
+        <div className="legend-item">
+          <div className="legend-color" style={{ backgroundColor: '#4a2a4a' }} />
+          <span>Trap</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * MINViewer - Display minimap tile data
+ */
+export function MINViewer({ data, filename }) {
+  const [minData, setMinData] = useState(null);
+  const [selectedTile, setSelectedTile] = useState(null);
+  const [zoom, setZoom] = useState(2);
+
+  useEffect(() => {
+    if (!data) return;
+
+    try {
+      const bytes = new Uint8Array(data);
+      const view = new DataView(data.buffer || data);
+
+      // MIN files contain tile frame references
+      // Each entry is typically 2 bytes (uint16)
+      // The layout varies by dungeon type:
+      // - Cathedral: 10x10 blocks, 2x2 tiles each = 400 entries
+      // - Catacombs/Caves/Hell: Similar structure
+
+      const entrySize = 2; // 16-bit entries
+      const numEntries = Math.floor(bytes.length / entrySize);
+
+      // Try to determine grid dimensions
+      let width = 16;
+      let height = Math.ceil(numEntries / width);
+
+      // Common MIN file patterns
+      const sqrtEntries = Math.floor(Math.sqrt(numEntries));
+      if (sqrtEntries * sqrtEntries === numEntries) {
+        width = sqrtEntries;
+        height = sqrtEntries;
+      } else {
+        // Try power of 2 widths
+        for (const w of [32, 16, 20, 10]) {
+          if (numEntries % w === 0) {
+            width = w;
+            height = numEntries / w;
+            break;
+          }
+        }
+      }
+
+      // Parse entries
+      const entries = [];
+      const grid = [];
+
+      for (let i = 0; i < numEntries; i++) {
+        const value = view.getUint16(i * 2, true);
+        entries.push(value);
+      }
+
+      for (let y = 0; y < height; y++) {
+        const row = [];
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          row.push(idx < entries.length ? entries[idx] : 0);
+        }
+        grid.push(row);
+      }
+
+      // Collect unique values for analysis
+      const uniqueValues = new Set(entries);
+      const maxValue = Math.max(...entries);
+      const minValue = Math.min(...entries.filter(v => v > 0));
+
+      setMinData({
+        width,
+        height,
+        grid,
+        entries,
+        uniqueValues: uniqueValues.size,
+        maxValue,
+        minValue,
+        bytes,
+      });
+    } catch (err) {
+      console.error('Failed to parse MIN:', err);
+    }
+  }, [data]);
+
+  const getTileColor = (value) => {
+    if (value === 0) return '#111';
+    // Create a color based on value
+    const hue = (value * 37) % 360;
+    const lightness = 30 + (value % 20);
+    return `hsl(${hue}, 60%, ${lightness}%)`;
+  };
+
+  if (!minData) {
+    return <div className="min-viewer-loading">Parsing minimap data...</div>;
+  }
+
+  return (
+    <div className="min-viewer">
+      <div className="min-viewer-header">
+        <span className="min-filename">{filename}</span>
+        <span className="min-info">
+          {minData.width}×{minData.height} | {minData.entries.length} entries | {minData.uniqueValues} unique
+        </span>
+        <div className="min-controls">
+          <span>Zoom:</span>
+          <input
+            type="range"
+            min="1"
+            max="8"
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+          />
+          <span>{zoom}x</span>
+        </div>
+      </div>
+
+      <div className="min-viewer-canvas" style={{ maxHeight: '400px', overflow: 'auto' }}>
+        <div
+          className="min-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${minData.width}, ${8 * zoom}px)`,
+            gap: '0',
+            width: 'fit-content',
+          }}
+        >
+          {minData.grid.flatMap((row, y) =>
+            row.map((value, x) => (
+              <div
+                key={`${x}-${y}`}
+                className="min-cell"
+                style={{
+                  width: 8 * zoom,
+                  height: 8 * zoom,
+                  backgroundColor: getTileColor(value),
+                  border: selectedTile?.x === x && selectedTile?.y === y
+                    ? '1px solid #fff'
+                    : '1px solid rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: zoom > 2 ? 10 : 8,
+                  color: 'rgba(255,255,255,0.6)',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setSelectedTile({ x, y, value })}
+                title={`(${x},${y}): ${value} (0x${value.toString(16).toUpperCase()})`}
+              >
+                {zoom >= 3 && value > 0 ? value : ''}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {selectedTile && (
+        <div className="min-selection">
+          <strong>Position:</strong> ({selectedTile.x}, {selectedTile.y}) |{' '}
+          <strong>Tile Index:</strong> {selectedTile.value} (0x{selectedTile.value.toString(16).toUpperCase().padStart(4, '0')})
+        </div>
+      )}
+
+      <div className="min-viewer-stats">
+        <span><strong>Range:</strong> {minData.minValue || 0} - {minData.maxValue}</span>
+        <span><strong>Total:</strong> {minData.bytes.length.toLocaleString()} bytes</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * TILViewer - Display tile definition data
+ */
+export function TILViewer({ data, filename }) {
+  const [tilData, setTilData] = useState(null);
+  const [selectedEntry, setSelectedEntry] = useState(null);
+
+  useEffect(() => {
+    if (!data) return;
+
+    try {
+      const bytes = new Uint8Array(data);
+      const view = new DataView(data.buffer || data);
+
+      // TIL files contain tile definitions
+      // Each tile entry is typically 8 bytes (4 x 16-bit frame references)
+      const entrySize = 8;
+      const numEntries = Math.floor(bytes.length / entrySize);
+
+      const entries = [];
+      for (let i = 0; i < numEntries; i++) {
+        const offset = i * entrySize;
+        entries.push({
+          index: i,
+          frame0: view.getUint16(offset, true),
+          frame1: view.getUint16(offset + 2, true),
+          frame2: view.getUint16(offset + 4, true),
+          frame3: view.getUint16(offset + 6, true),
+        });
+      }
+
+      setTilData({ entries, numEntries, bytes });
+    } catch (err) {
+      console.error('Failed to parse TIL:', err);
+    }
+  }, [data]);
+
+  if (!tilData) {
+    return <div className="til-viewer-loading">Parsing tile data...</div>;
+  }
+
+  return (
+    <div className="til-viewer">
+      <div className="til-viewer-header">
+        <span className="til-filename">{filename}</span>
+        <span className="til-info">{tilData.numEntries} tile definitions</span>
+      </div>
+
+      <div className="til-viewer-list" style={{ maxHeight: '400px', overflow: 'auto' }}>
+        <table className="til-table">
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Frame 0</th>
+              <th>Frame 1</th>
+              <th>Frame 2</th>
+              <th>Frame 3</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tilData.entries.map((entry) => (
+              <tr
+                key={entry.index}
+                className={selectedEntry?.index === entry.index ? 'selected' : ''}
+                onClick={() => setSelectedEntry(entry)}
+              >
+                <td>{entry.index}</td>
+                <td>{entry.frame0}</td>
+                <td>{entry.frame1}</td>
+                <td>{entry.frame2}</td>
+                <td>{entry.frame3}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {selectedEntry && (
+        <div className="til-selection">
+          <strong>Tile {selectedEntry.index}:</strong>{' '}
+          Frames [{selectedEntry.frame0}, {selectedEntry.frame1}, {selectedEntry.frame2}, {selectedEntry.frame3}]
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * FileInfo - Display file metadata
  */
 export function FileInfo({ data, filename }) {
@@ -624,4 +1355,14 @@ export function FileInfo({ data, filename }) {
   );
 }
 
-export default { HexViewer, PaletteViewer, DUNEditor, FileInfo, getFileType, getFileCategory };
+export default {
+  HexViewer,
+  PaletteViewer,
+  DUNEditor,
+  SOLViewer,
+  MINViewer,
+  TILViewer,
+  FileInfo,
+  getFileType,
+  getFileCategory
+};

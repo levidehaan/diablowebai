@@ -329,6 +329,11 @@ class App extends React.Component {
     try {
       const fs = await this.fs;
 
+      // Verify fs is properly initialized
+      if (!fs || !fs.files) {
+        throw new Error('Filesystem not initialized. Please refresh the page.');
+      }
+
       // Store original for restoration if needed
       this.originalSpawnMpq = fs.files.get('spawn.mpq');
 
