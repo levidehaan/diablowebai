@@ -2,17 +2,18 @@
  * MPQ Writer
  *
  * Creates modified MPQ archives by patching the original spawn.mpq
- * with AI-generated content. Uses simple uncompressed storage for
- * modified files to avoid compression complexity.
+ * with AI-generated content. Uses zlib compression for proper
+ * file storage compatible with the game engine.
  *
  * Strategy:
  * 1. Copy original MPQ structure
- * 2. Replace/add modified files at the end
+ * 2. Compress and replace/add modified files at the end
  * 3. Rebuild hash and block tables
  * 4. Output new MPQ
  */
 
 import { encrypt, hash, path_name } from '../api/savefile';
+import pako from 'pako';
 
 // MPQ Header constants
 const MPQ_MAGIC = 0x1A51504D;  // 'MPQ\x1A'
@@ -33,6 +34,35 @@ const Flags = {
   SectorCrc: 0x04000000,
   Exists: 0x80000000,
 };
+
+/**
+ * Compress data using zlib for MPQ storage
+ * Returns CompressMulti format: [compression_type_byte] + [compressed_data]
+ */
+function compressData(data) {
+  try {
+    // Use zlib deflate compression
+    const compressed = pako.deflate(data, { level: 6 });
+
+    // Only use compression if it actually makes the file smaller
+    // Account for the 1-byte compression type prefix
+    if (compressed.length + 1 >= data.length) {
+      // Not worth compressing, return null to indicate no compression
+      return null;
+    }
+
+    // Create CompressMulti format: 0x02 (zlib) + compressed data
+    const result = new Uint8Array(compressed.length + 1);
+    result[0] = 0x02;  // zlib compression type
+    result.set(compressed, 1);
+
+    console.log(`[MPQWriter] Compressed ${data.length} -> ${result.length} bytes (${Math.round(result.length / data.length * 100)}%)`);
+    return result;
+  } catch (e) {
+    console.warn('[MPQWriter] Compression failed:', e.message);
+    return null;
+  }
+}
 
 /**
  * MPQ Writer class
@@ -244,6 +274,7 @@ export class MPQWriter {
 
   /**
    * Prepare file entries for building
+   * Compresses files using zlib for efficient storage
    */
   prepareFileEntries(newFiles) {
     const entries = [];
@@ -268,9 +299,28 @@ export class MPQWriter {
         }
       }
 
+      // Try to compress the file data
+      const originalSize = file.data.length;
+      const compressed = compressData(file.data);
+
+      let fileData, compressedSize, flags;
+      if (compressed) {
+        // Use compressed data with CompressMulti flag
+        fileData = compressed;
+        compressedSize = compressed.length;
+        flags = Flags.Exists | Flags.CompressMulti | Flags.SingleUnit;
+        console.log(`[MPQWriter] ${file.path}: compressed ${originalSize} -> ${compressedSize} bytes`);
+      } else {
+        // Use uncompressed data
+        fileData = file.data;
+        compressedSize = originalSize;
+        flags = Flags.Exists | Flags.SingleUnit;
+        console.log(`[MPQWriter] ${file.path}: stored uncompressed (${originalSize} bytes)`);
+      }
+
       entries.push({
         path: file.path,
-        data: file.data,
+        data: fileData,
         hashA,
         hashB,
         hashIndex,
@@ -278,9 +328,9 @@ export class MPQWriter {
         isNew: blockIndex === -1,
         isModified: blockIndex !== -1,
         filePos: 0,  // Will be set later
-        fileSize: file.data.length,
-        cmpSize: file.data.length,  // Uncompressed
-        flags: Flags.Exists | Flags.SingleUnit,  // Simple uncompressed file
+        fileSize: originalSize,  // Original uncompressed size
+        cmpSize: compressedSize,  // Compressed size (or same as fileSize if not compressed)
+        flags,
       });
     }
 
