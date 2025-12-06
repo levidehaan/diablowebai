@@ -11,12 +11,14 @@ import './ModEditor.scss';
 import './LevelPreview.scss';
 import './CampaignBlueprintPanel.scss';
 import './CampaignBuildProgress.scss';
+import './FileViewer.scss';
 import { ModToolExecutor } from './ModTools';
 import DUNParser from './DUNParser';
 import { MPQWriter } from './MPQWriter';
 import { MpqReader } from '../api/savefile';
 import { LevelPreview, MiniMap } from './LevelPreview';
 import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
+import { HexViewer, PaletteViewer, DUNEditor, FileInfo, getFileType, getFileCategory } from './FileViewer';
 
 // Spawn.mpq valid sizes
 const SpawnSizes = [50274091, 25830791];
@@ -67,6 +69,13 @@ export class ModEditor extends Component {
       showFileList: false,
       fileList: [],
       selectedFile: null,
+      selectedFileData: null,
+      selectedFileType: null,
+
+      // View mode
+      viewMode: 'preview', // 'preview', 'hex', 'editor'
+      fileCategory: 'all', // 'all', 'Levels', 'Monsters', etc.
+      fileSearch: '',
 
       // Download notice
       showDownloadNotice: false,
@@ -303,6 +312,7 @@ export class ModEditor extends Component {
     this.originalMpqBuffer = buffer;
 
     const mpqReader = new MpqReader(buffer);
+    this.mpqReader = mpqReader; // Store for later file reading
     this.executor.setMPQ(mpqReader);
 
     // Get file list
@@ -527,6 +537,95 @@ export class ModEditor extends Component {
     this.setState(state => ({ showFileList: !state.showFileList }));
   };
 
+  /**
+   * Load any file from the MPQ
+   */
+  loadFile = async (path) => {
+    if (!this.mpqReader) {
+      console.error('[ModEditor] No MPQ loaded');
+      return;
+    }
+
+    try {
+      const fileType = getFileType(path);
+      const data = this.mpqReader.read(path);
+
+      if (!data) {
+        console.warn(`[ModEditor] Could not read file: ${path}`);
+        this.setState({
+          selectedFile: path,
+          selectedFileData: null,
+          selectedFileType: fileType,
+          error: `Could not read file: ${path}`,
+        });
+        return;
+      }
+
+      console.log(`[ModEditor] Loaded file: ${path} (${data.length} bytes)`);
+
+      // For DUN files, also parse and load preview
+      if (fileType.key === 'DUN') {
+        this.previewLevel(path);
+      }
+
+      this.setState({
+        selectedFile: path,
+        selectedFileData: data.buffer || data,
+        selectedFileType: fileType,
+        error: null,
+      });
+    } catch (err) {
+      console.error(`[ModEditor] Failed to load file: ${path}`, err);
+      this.setState({
+        selectedFile: path,
+        selectedFileData: null,
+        selectedFileType: null,
+        error: `Failed to load file: ${err.message}`,
+      });
+    }
+  };
+
+  /**
+   * Get grouped file list by category
+   */
+  getGroupedFiles = () => {
+    const { fileList, fileCategory, fileSearch } = this.state;
+
+    // Filter by search
+    let filtered = fileList;
+    if (fileSearch) {
+      const search = fileSearch.toLowerCase();
+      filtered = fileList.filter(f => f.toLowerCase().includes(search));
+    }
+
+    // Group by category
+    const groups = {};
+    for (const file of filtered) {
+      const category = getFileCategory(file);
+      if (fileCategory === 'all' || fileCategory === category) {
+        if (!groups[category]) groups[category] = [];
+        groups[category].push(file);
+      }
+    }
+
+    return groups;
+  };
+
+  /**
+   * Get category counts
+   */
+  getCategoryCounts = () => {
+    const { fileList } = this.state;
+    const counts = { all: fileList.length };
+
+    for (const file of fileList) {
+      const category = getFileCategory(file);
+      counts[category] = (counts[category] || 0) + 1;
+    }
+
+    return counts;
+  };
+
   render() {
     const {
       mpqLoaded,
@@ -548,9 +647,17 @@ export class ModEditor extends Component {
       showFileList,
       fileList,
       selectedFile,
+      selectedFileData,
+      selectedFileType,
+      viewMode,
+      fileCategory,
+      fileSearch,
       showDownloadNotice,
       downloadedFilename,
     } = this.state;
+
+    const categoryCounts = this.getCategoryCounts();
+    const categories = ['all', ...Object.keys(categoryCounts).filter(k => k !== 'all')].sort();
 
     // Show loading screen while fetching spawn.mpq
     if (status === 'loading' && loadingMessage) {
@@ -694,112 +801,209 @@ export class ModEditor extends Component {
             )}
           </div>
 
-          {/* File Browser */}
+          {/* Enhanced File Browser */}
           <div className="mod-editor-panel files-panel">
             <h3 onClick={this.toggleFileList} style={{ cursor: 'pointer' }}>
               Files {showFileList ? '▼' : '▶'} ({fileList.length})
             </h3>
-            {showFileList && (
-              <div className="files-list">
-                {fileList.filter(f => f.endsWith('.dun')).map(file => (
-                  <div
-                    key={file}
-                    className={`file-item ${selectedFile === file ? 'selected' : ''} ${
-                      modifiedFiles.some(m => m.path === file) ? 'modified' : ''
-                    }`}
-                    onClick={() => this.previewLevel(file)}
-                  >
-                    {file}
-                    {modifiedFiles.some(m => m.path === file) && (
-                      <span className="modified-badge">*</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
 
-            {/* Modified Files */}
-            {modifiedFiles.length > 0 && (
+            {showFileList && (
               <>
-                <h4>Modified Files</h4>
-                <div className="modified-list">
-                  {modifiedFiles.map(file => (
-                    <div
-                      key={file.path}
-                      className="modified-item"
-                      onClick={() => this.previewLevel(file.path)}
+                {/* Category Filter */}
+                <div className="file-browser-categories">
+                  {categories.map(cat => (
+                    <button
+                      key={cat}
+                      className={`category-btn ${fileCategory === cat ? 'active' : ''}`}
+                      onClick={() => this.setState({ fileCategory: cat })}
                     >
-                      <span className="file-path">{file.path}</span>
-                      <span className="file-size">
-                        {file.buffer.length} bytes
-                      </span>
-                      {file.isNew && <span className="new-badge">NEW</span>}
+                      {cat === 'all' ? 'All' : cat}
+                      <span className="count">({categoryCounts[cat] || 0})</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search */}
+                <div className="file-browser-search">
+                  <input
+                    type="text"
+                    placeholder="Search files..."
+                    value={fileSearch}
+                    onChange={(e) => this.setState({ fileSearch: e.target.value })}
+                  />
+                </div>
+
+                {/* File List */}
+                <div className="file-browser-list">
+                  {Object.entries(this.getGroupedFiles()).map(([category, files]) => (
+                    <div key={category} className="file-group">
+                      <div className="file-group-header">{category} ({files.length})</div>
+                      {files.slice(0, 50).map(file => {
+                        const fileType = getFileType(file);
+                        const isModified = modifiedFiles.some(m => m.path === file);
+                        return (
+                          <div
+                            key={file}
+                            className={`file-item ${selectedFile === file ? 'selected' : ''}`}
+                            onClick={() => this.loadFile(file)}
+                          >
+                            <span className="file-icon" style={{ color: fileType.color }}>
+                              {fileType.icon}
+                            </span>
+                            <span className="file-name">{file.split('/').pop()}</span>
+                            <div className="file-badges">
+                              {isModified && <span className="badge modified">MOD</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {files.length > 50 && (
+                        <div className="file-item-more">...and {files.length - 50} more</div>
+                      )}
                     </div>
                   ))}
                 </div>
               </>
             )}
+
+            {/* Modified Files */}
+            {modifiedFiles.length > 0 && (
+              <>
+                <h4>Modified Files ({modifiedFiles.length})</h4>
+                <div className="modified-list">
+                  {modifiedFiles.map(file => {
+                    const fileType = getFileType(file.path);
+                    return (
+                      <div
+                        key={file.path}
+                        className="modified-item"
+                        onClick={() => this.loadFile(file.path)}
+                      >
+                        <span className="file-icon" style={{ color: fileType.color }}>
+                          {fileType.icon}
+                        </span>
+                        <span className="file-path">{file.path}</span>
+                        <span className="file-size">
+                          {file.buffer.length.toLocaleString()} bytes
+                        </span>
+                        {file.isNew && <span className="new-badge">NEW</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Level Preview */}
+          {/* File Viewer Panel */}
           <div className="mod-editor-panel preview-panel">
             <div className="preview-header">
-              <h3>Preview {previewPath && `- ${previewPath}`}</h3>
-              {previewDunData && (
-                <div className="preview-controls">
+              <h3>
+                {selectedFile ? (
+                  <>
+                    <span className="file-type-icon" style={{ color: selectedFileType?.color }}>
+                      {selectedFileType?.icon}
+                    </span>
+                    {selectedFile.split('/').pop()}
+                  </>
+                ) : 'File Viewer'}
+              </h3>
+              {selectedFile && (
+                <div className="view-mode-tabs">
                   <button
-                    className={`btn btn-small ${previewMode === 'visual' ? 'active' : ''}`}
-                    onClick={() => this.setState({ previewMode: 'visual' })}
+                    className={`btn btn-small ${viewMode === 'preview' ? 'active' : ''}`}
+                    onClick={() => this.setState({ viewMode: 'preview' })}
                   >
-                    Visual
+                    Preview
                   </button>
                   <button
-                    className={`btn btn-small ${previewMode === 'ascii' ? 'active' : ''}`}
-                    onClick={() => this.setState({ previewMode: 'ascii' })}
+                    className={`btn btn-small ${viewMode === 'hex' ? 'active' : ''}`}
+                    onClick={() => this.setState({ viewMode: 'hex' })}
                   >
-                    ASCII
+                    Hex
                   </button>
-                  <button
-                    className={`btn btn-small ${previewMode === 'both' ? 'active' : ''}`}
-                    onClick={() => this.setState({ previewMode: 'both' })}
-                  >
-                    Both
-                  </button>
-                  <label className="preview-toggle">
-                    <input
-                      type="checkbox"
-                      checked={showMonsters}
-                      onChange={(e) => this.setState({ showMonsters: e.target.checked })}
-                    />
-                    Monsters
-                  </label>
-                  <label className="preview-toggle">
-                    <input
-                      type="checkbox"
-                      checked={showItems}
-                      onChange={(e) => this.setState({ showItems: e.target.checked })}
-                    />
-                    Items
-                  </label>
+                  {selectedFileType?.key === 'DUN' && (
+                    <button
+                      className={`btn btn-small ${viewMode === 'editor' ? 'active' : ''}`}
+                      onClick={() => this.setState({ viewMode: 'editor' })}
+                    >
+                      Editor
+                    </button>
+                  )}
                 </div>
               )}
             </div>
-            {previewContent || previewDunData ? (
+
+            {selectedFile ? (
               <div className="preview-content">
-                {/* Visual Preview */}
-                {(previewMode === 'visual' || previewMode === 'both') && previewDunData && (
+                {/* File Info */}
+                <FileInfo data={selectedFileData} filename={selectedFile} />
+
+                {/* Hex View */}
+                {viewMode === 'hex' && selectedFileData && (
+                  <HexViewer
+                    data={selectedFileData}
+                    filename={selectedFile}
+                  />
+                )}
+
+                {/* Palette View */}
+                {viewMode === 'preview' && selectedFileType?.key === 'PAL' && selectedFileData && (
+                  <PaletteViewer
+                    data={selectedFileData}
+                    filename={selectedFile}
+                  />
+                )}
+
+                {/* DUN Preview */}
+                {viewMode === 'preview' && selectedFileType?.key === 'DUN' && previewDunData && (
                   <div className="level-preview-container">
-                    <LevelPreview
-                      dunData={previewDunData}
-                      theme={previewTheme}
-                      showMonsters={showMonsters}
-                      showItems={showItems}
-                      maxWidth={350}
-                      maxHeight={350}
-                      onTileHover={(x, y, tileId) => {
-                        // Could show tile info in status bar
-                      }}
-                    />
+                    <div className="dun-preview-controls">
+                      <button
+                        className={`btn btn-small ${previewMode === 'visual' ? 'active' : ''}`}
+                        onClick={() => this.setState({ previewMode: 'visual' })}
+                      >
+                        Visual
+                      </button>
+                      <button
+                        className={`btn btn-small ${previewMode === 'ascii' ? 'active' : ''}`}
+                        onClick={() => this.setState({ previewMode: 'ascii' })}
+                      >
+                        ASCII
+                      </button>
+                      <label className="preview-toggle">
+                        <input
+                          type="checkbox"
+                          checked={showMonsters}
+                          onChange={(e) => this.setState({ showMonsters: e.target.checked })}
+                        />
+                        Monsters
+                      </label>
+                      <label className="preview-toggle">
+                        <input
+                          type="checkbox"
+                          checked={showItems}
+                          onChange={(e) => this.setState({ showItems: e.target.checked })}
+                        />
+                        Items
+                      </label>
+                    </div>
+
+                    {previewMode === 'visual' && (
+                      <LevelPreview
+                        dunData={previewDunData}
+                        theme={previewTheme}
+                        showMonsters={showMonsters}
+                        showItems={showItems}
+                        maxWidth={400}
+                        maxHeight={400}
+                      />
+                    )}
+
+                    {previewMode === 'ascii' && previewContent && (
+                      <pre className="ascii-level-preview">{previewContent}</pre>
+                    )}
+
                     <div className="level-details">
                       <h4>Level Details</h4>
                       <div className="stat-row">
@@ -843,21 +1047,33 @@ export class ModEditor extends Component {
                     </div>
                   </div>
                 )}
-                {/* ASCII Preview */}
-                {(previewMode === 'ascii' || previewMode === 'both') && previewContent && (
-                  <pre className="ascii-level-preview">{previewContent}</pre>
+
+                {/* DUN Editor */}
+                {viewMode === 'editor' && selectedFileType?.key === 'DUN' && selectedFileData && (
+                  <DUNEditor
+                    data={selectedFileData}
+                    filename={selectedFile}
+                    onModify={(newData) => {
+                      console.log('[ModEditor] DUN modified');
+                      // TODO: Update modified files list
+                    }}
+                  />
                 )}
-                {/* Mini map for 'both' mode */}
-                {previewMode === 'both' && previewDunData && (
-                  <div className="mini-map-container">
-                    <span className="mini-map-label">Mini Map</span>
-                    <MiniMap dunData={previewDunData} theme={previewTheme} size={80} />
+
+                {/* Generic file preview (not yet supported) */}
+                {viewMode === 'preview' && selectedFileType?.key !== 'DUN' && selectedFileType?.key !== 'PAL' && (
+                  <div className="generic-file-info">
+                    <p>File type: <strong>{selectedFileType?.name}</strong></p>
+                    <p>Size: <strong>{selectedFileData ? selectedFileData.byteLength?.toLocaleString() || 'N/A' : 'Loading...'} bytes</strong></p>
+                    <p className="hint">Switch to Hex view to inspect raw data</p>
                   </div>
                 )}
               </div>
             ) : (
               <div className="empty-message">
-                Select a level file to preview
+                <div className="empty-icon">📂</div>
+                <p>Select a file from the browser to view</p>
+                <p className="hint">Use the category filters and search to find files</p>
               </div>
             )}
           </div>
