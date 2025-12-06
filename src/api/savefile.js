@@ -1,5 +1,6 @@
 import { explode } from './explode';
 import codec_decode from './codec';
+import pako from 'pako';
 
 function pkzip_decompress(data, out_size) {
   if (data.length === out_size) {
@@ -48,18 +49,47 @@ function multi_decompress(data, out_size) {
   const compressedData = data.subarray(1);
 
   // Handle compression type
-  // 0x02 = zlib, 0x08 = PKWare DCL, 0x10 = bzip2, 0x40 = IMA ADPCM, 0x80 = Huffman
+  // 0x01 = Huffman, 0x02 = zlib, 0x08 = PKWare DCL, 0x10 = bzip2, 0x40 = IMA ADPCM mono, 0x80 = IMA ADPCM stereo
 
   if (compressionType === 0x08) {
     // PKWare DCL (explode)
     return pkzip_decompress(compressedData, out_size);
   } else if (compressionType === 0x02) {
-    // zlib - not implemented, but try returning raw data
-    console.warn('[MPQ] zlib compression not supported');
-    return null;
+    // zlib/deflate compression
+    try {
+      const result = pako.inflate(compressedData);
+      if (result && result.length === out_size) {
+        return result;
+      }
+      // Try raw deflate if regular inflate fails
+      return pako.inflateRaw(compressedData);
+    } catch (e) {
+      console.warn('[MPQ] zlib decompression failed:', e.message);
+      return null;
+    }
   } else if (compressionType === 0x00) {
     // No compression
     return compressedData.length >= out_size ? compressedData.subarray(0, out_size) : null;
+  } else if (compressionType === 0x01) {
+    // Huffman encoding - used for audio, not yet implemented
+    console.warn('[MPQ] Huffman compression not yet supported');
+    return null;
+  } else if (compressionType === 0x10) {
+    // bzip2 - not implemented
+    console.warn('[MPQ] bzip2 compression not supported');
+    return null;
+  } else if (compressionType === 0x40 || compressionType === 0x41) {
+    // IMA ADPCM mono/stereo (audio)
+    console.warn('[MPQ] IMA ADPCM audio compression not supported');
+    return null;
+  } else if (compressionType === 0x80 || compressionType === 0x81) {
+    // Huffman + ADPCM (audio)
+    console.warn('[MPQ] Huffman+ADPCM audio compression not supported');
+    return null;
+  } else if (compressionType === 0x12) {
+    // LZMA compression
+    console.warn('[MPQ] LZMA compression not supported');
+    return null;
   } else {
     // Try PKWare as fallback for unknown types
     const result = pkzip_decompress(compressedData, out_size);
