@@ -30,6 +30,47 @@ function pkzip_decompress(data, out_size) {
   return output;
 }
 
+/**
+ * Multi-format decompression for MPQ CompressMulti (0x200) format
+ * First byte indicates compression type(s)
+ */
+function multi_decompress(data, out_size) {
+  if (data.length === 0) {
+    return null;
+  }
+
+  // If data is already the right size (no compression), return as-is
+  if (data.length === out_size) {
+    return data;
+  }
+
+  const compressionType = data[0];
+  const compressedData = data.subarray(1);
+
+  // Handle compression type
+  // 0x02 = zlib, 0x08 = PKWare DCL, 0x10 = bzip2, 0x40 = IMA ADPCM, 0x80 = Huffman
+
+  if (compressionType === 0x08) {
+    // PKWare DCL (explode)
+    return pkzip_decompress(compressedData, out_size);
+  } else if (compressionType === 0x02) {
+    // zlib - not implemented, but try returning raw data
+    console.warn('[MPQ] zlib compression not supported');
+    return null;
+  } else if (compressionType === 0x00) {
+    // No compression
+    return compressedData.length >= out_size ? compressedData.subarray(0, out_size) : null;
+  } else {
+    // Try PKWare as fallback for unknown types
+    const result = pkzip_decompress(compressedData, out_size);
+    if (result) {
+      return result;
+    }
+    console.warn(`[MPQ] Unknown compression type: 0x${compressionType.toString(16)}`);
+    return null;
+  }
+}
+
 const hashtable = (function() {
   const hashtable = new Uint32Array(1280);
   let seed = 0x00100001;
@@ -184,7 +225,7 @@ export class MpqReader {
         decrypt8(data, info.key);
       }
       if (info.flags & Flags.CompressMulti) {
-        return;
+        return multi_decompress(data, info.fileSize);
       } else if (info.flags & Flags.CompressPkWare) {
         return pkzip_decompress(data, info.fileSize);
       }
@@ -219,7 +260,7 @@ export class MpqReader {
           decrypt8(tmp, info.key + i);
         }
         if (info.flags & Flags.CompressMulti) {
-          return;
+          tmp = multi_decompress(tmp, uSize);
         } else if (info.flags & Flags.CompressPkWare) {
           tmp = pkzip_decompress(tmp, uSize);
         }
