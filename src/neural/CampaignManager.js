@@ -127,7 +127,7 @@ function GenerationProgress({ stage, progress }) {
 /**
  * Main Campaign Manager component
  */
-export function CampaignManager({ onCampaignReady, onClose }) {
+export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
   const [view, setView] = useState('list'); // 'list', 'create', 'generating'
   const [savedCampaigns, setSavedCampaigns] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('CLASSIC');
@@ -138,13 +138,57 @@ export function CampaignManager({ onCampaignReady, onClose }) {
   const [generationProgress, setGenerationProgress] = useState({ stage: '', progress: 0 });
   const [error, setError] = useState(null);
   const [storageStats, setStorageStats] = useState(null);
+  const [mpqStatus, setMpqStatus] = useState({ loading: true, files: [] });
   const fileInputRef = useRef(null);
+
+  // Version identifier for debugging
+  const UI_VERSION = 'v2.1.0-dec2024';
 
   // Load saved campaigns on mount
   useEffect(() => {
     loadSavedCampaigns();
     loadStorageStats();
+    detectMPQFiles();
   }, []);
+
+  // Detect available MPQ files
+  const detectMPQFiles = async () => {
+    try {
+      const files = [];
+
+      // Check filesystem if available
+      if (filesystem) {
+        const fs = await filesystem;
+        if (fs && fs.files) {
+          for (const [name, data] of fs.files) {
+            if (name.toLowerCase().endsWith('.mpq')) {
+              files.push({
+                name,
+                size: data?.length || data?.byteLength || 0,
+                type: name.toLowerCase() === 'spawn.mpq' ? 'base' : 'custom'
+              });
+            }
+          }
+        }
+      }
+
+      // Always show spawn.mpq as expected
+      if (!files.find(f => f.name.toLowerCase() === 'spawn.mpq')) {
+        files.unshift({
+          name: 'spawn.mpq',
+          size: 0,
+          type: 'base',
+          status: 'not-loaded'
+        });
+      }
+
+      setMpqStatus({ loading: false, files });
+      console.log('[CampaignManager] Detected MPQ files:', files);
+    } catch (err) {
+      console.error('[CampaignManager] MPQ detection error:', err);
+      setMpqStatus({ loading: false, files: [], error: err.message });
+    }
+  };
 
   const loadSavedCampaigns = async () => {
     try {
@@ -294,14 +338,49 @@ export function CampaignManager({ onCampaignReady, onClose }) {
     }
   };
 
+  // Format file size
+  const formatSize = (bytes) => {
+    if (!bytes) return 'N/A';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   return (
     <div className="campaign-manager">
       <div className="campaign-manager__header">
         <h2>Campaign Manager</h2>
+        <span className="campaign-manager__version">{UI_VERSION}</span>
         {onClose && (
           <button className="btn btn--close" onClick={onClose}>
             &times;
           </button>
+        )}
+      </div>
+
+      {/* MPQ Status Section - NEW */}
+      <div className="campaign-manager__mpq-status">
+        <h4>MPQ Files Status</h4>
+        {mpqStatus.loading ? (
+          <span className="mpq-loading">Detecting MPQ files...</span>
+        ) : mpqStatus.error ? (
+          <span className="mpq-error">Error: {mpqStatus.error}</span>
+        ) : (
+          <div className="mpq-files-list">
+            {mpqStatus.files.map((file, i) => (
+              <div key={i} className={`mpq-file mpq-file--${file.type} ${file.status === 'not-loaded' ? 'mpq-file--missing' : ''}`}>
+                <span className="mpq-file__icon">{file.type === 'base' ? '📦' : '🎮'}</span>
+                <span className="mpq-file__name">{file.name}</span>
+                <span className="mpq-file__size">{formatSize(file.size)}</span>
+                <span className={`mpq-file__status ${file.size > 0 ? 'status--ready' : 'status--waiting'}`}>
+                  {file.size > 0 ? '✓ Ready' : '⏳ Waiting'}
+                </span>
+              </div>
+            ))}
+            {mpqStatus.files.length === 0 && (
+              <span className="mpq-none">No MPQ files detected</span>
+            )}
+          </div>
         )}
       </div>
 

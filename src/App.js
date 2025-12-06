@@ -1033,6 +1033,7 @@ class App extends React.Component {
           <CampaignManager
             onCampaignReady={this.handleCampaignReady}
             onClose={this.closeCampaignManager}
+            filesystem={this.fs}
           />
         </>
       );
