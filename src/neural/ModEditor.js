@@ -18,7 +18,7 @@ import { MPQWriter } from './MPQWriter';
 import { MpqReader } from '../api/savefile';
 import { LevelPreview, MiniMap } from './LevelPreview';
 import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
-import { HexViewer, PaletteViewer, DUNEditor, FileInfo, getFileType, getFileCategory } from './FileViewer';
+import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, FileInfo, getFileType, getFileCategory } from './FileViewer';
 
 // Spawn.mpq valid sizes
 const SpawnSizes = [50274091, 25830791];
@@ -1057,11 +1057,43 @@ export class ModEditor extends Component {
                       console.log('[ModEditor] DUN modified');
                       // TODO: Update modified files list
                     }}
+                    onSave={(dunBytes, filename) => {
+                      console.log('[ModEditor] Saving DUN:', filename, dunBytes.length, 'bytes');
+                      // Add to executor's modified files
+                      this.executor.addModifiedFile(filename, dunBytes, 'binary', false);
+                      // Refresh the displayed modified files list
+                      const modifiedFiles = this.executor.getModifiedFiles();
+                      this.setState({ modifiedFiles });
+                    }}
+                  />
+                )}
+
+                {/* SOL Preview - Collision Data */}
+                {viewMode === 'preview' && selectedFileType?.key === 'SOL' && selectedFileData && (
+                  <SOLViewer
+                    data={selectedFileData}
+                    filename={selectedFile}
+                  />
+                )}
+
+                {/* MIN Preview - Minimap/Tile Data */}
+                {viewMode === 'preview' && selectedFileType?.key === 'MIN' && selectedFileData && (
+                  <MINViewer
+                    data={selectedFileData}
+                    filename={selectedFile}
+                  />
+                )}
+
+                {/* TIL Preview - Tile Definitions */}
+                {viewMode === 'preview' && selectedFileType?.key === 'TIL' && selectedFileData && (
+                  <TILViewer
+                    data={selectedFileData}
+                    filename={selectedFile}
                   />
                 )}
 
                 {/* Generic file preview (not yet supported) */}
-                {viewMode === 'preview' && selectedFileType?.key !== 'DUN' && selectedFileType?.key !== 'PAL' && (
+                {viewMode === 'preview' && !['DUN', 'PAL', 'SOL', 'MIN', 'TIL'].includes(selectedFileType?.key) && (
                   <div className="generic-file-info">
                     <p>File type: <strong>{selectedFileType?.name}</strong></p>
                     <p>Size: <strong>{selectedFileData ? selectedFileData.byteLength?.toLocaleString() || 'N/A' : 'Loading...'} bytes</strong></p>

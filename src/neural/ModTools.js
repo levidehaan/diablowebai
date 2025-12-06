@@ -4470,6 +4470,19 @@ export class ModToolExecutor {
   }
 
   /**
+   * Add a modified file directly
+   */
+  addModifiedFile(path, buffer, type = 'binary', isNew = false) {
+    this.modifiedFiles.set(path, {
+      type,
+      data: buffer,
+      modified: Date.now(),
+      isNew,
+    });
+    console.log(`[ModToolExecutor] Added modified file: ${path} (${buffer.length} bytes)`);
+  }
+
+  /**
    * Get all modified files for building MPQ
    */
   getModifiedFiles() {

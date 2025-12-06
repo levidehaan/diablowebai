@@ -597,3 +597,351 @@
     }
   }
 }
+
+// ============================================
+// ENHANCED DUN EDITOR STYLES
+// ============================================
+
+.dun-editor {
+  .toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: #444;
+    margin: 0 8px;
+  }
+
+  .tool-btn {
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    &.highlight {
+      background: #4a9060;
+      border-color: #5aaa70;
+      animation: pulse-save 1s ease-in-out infinite;
+    }
+  }
+
+  &-palettes {
+    display: flex;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #1f1f1f;
+    border-bottom: 1px solid #333;
+    min-height: 40px;
+    flex-wrap: wrap;
+  }
+
+  .palette-panel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .palette-label {
+      color: #888;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    select {
+      max-width: 150px;
+    }
+  }
+
+  .mini-palette {
+    display: flex;
+    gap: 3px;
+
+    .palette-item {
+      width: 20px;
+      height: 20px;
+      border: 1px solid #444;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: transform 0.1s;
+
+      &:hover {
+        transform: scale(1.2);
+        z-index: 1;
+      }
+
+      &.selected {
+        border-color: #fff;
+        box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+      }
+    }
+  }
+}
+
+@keyframes pulse-save {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(74, 144, 96, 0);
+  }
+  50% {
+    box-shadow: 0 0 8px rgba(74, 144, 96, 0.6);
+  }
+}
+
+// ============================================
+// SOL VIEWER (Collision Data)
+// ============================================
+
+.sol-viewer {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+
+  &-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #252525;
+    border-bottom: 1px solid #333;
+
+    .sol-filename {
+      color: #ff8844;
+      font-weight: bold;
+    }
+
+    .sol-info {
+      color: #888;
+      font-size: 11px;
+    }
+
+    .sol-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #888;
+      font-size: 11px;
+
+      input[type="range"] {
+        width: 60px;
+      }
+    }
+  }
+
+  &-canvas {
+    padding: 8px;
+    background: #111;
+  }
+
+  &-grid {
+    gap: 0;
+  }
+
+  .sol-cell {
+    transition: opacity 0.1s;
+
+    &:hover {
+      opacity: 0.7;
+    }
+  }
+
+  .sol-selection {
+    padding: 8px 12px;
+    background: #252525;
+    border-top: 1px solid #333;
+    color: #aaa;
+    font-size: 11px;
+
+    strong {
+      color: #ff8844;
+    }
+  }
+
+  &-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 8px 12px;
+    background: #202020;
+    border-top: 1px solid #333;
+    font-size: 11px;
+    color: #888;
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+
+      .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+      }
+    }
+  }
+}
+
+// ============================================
+// MIN VIEWER (Minimap Data)
+// ============================================
+
+.min-viewer {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+
+  &-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #252525;
+    border-bottom: 1px solid #333;
+
+    .min-filename {
+      color: #49a9ff;
+      font-weight: bold;
+    }
+
+    .min-info {
+      color: #888;
+      font-size: 11px;
+    }
+
+    .min-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #888;
+      font-size: 11px;
+
+      input[type="range"] {
+        width: 60px;
+      }
+    }
+  }
+
+  &-canvas {
+    padding: 8px;
+    background: #111;
+  }
+
+  .min-cell {
+    transition: opacity 0.1s;
+
+    &:hover {
+      opacity: 0.7;
+    }
+  }
+
+  .min-selection {
+    padding: 8px 12px;
+    background: #252525;
+    border-top: 1px solid #333;
+    color: #aaa;
+    font-size: 11px;
+
+    strong {
+      color: #49a9ff;
+    }
+  }
+
+  &-stats {
+    display: flex;
+    gap: 16px;
+    padding: 8px 12px;
+    background: #202020;
+    border-top: 1px solid #333;
+    font-size: 11px;
+    color: #888;
+
+    strong {
+      color: #49a9ff;
+    }
+  }
+}
+
+// ============================================
+// TIL VIEWER (Tile Definitions)
+// ============================================
+
+.til-viewer {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+
+  &-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #252525;
+    border-bottom: 1px solid #333;
+
+    .til-filename {
+      color: #a94;
+      font-weight: bold;
+    }
+
+    .til-info {
+      color: #888;
+      font-size: 11px;
+    }
+  }
+
+  &-list {
+    padding: 0;
+  }
+
+  .til-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+
+    th {
+      background: #202020;
+      color: #888;
+      padding: 6px 12px;
+      text-align: left;
+      border-bottom: 1px solid #333;
+      position: sticky;
+      top: 0;
+    }
+
+    td {
+      padding: 4px 12px;
+      color: #aaa;
+      border-bottom: 1px solid #252525;
+    }
+
+    tr {
+      cursor: pointer;
+
+      &:hover {
+        background: #252525;
+      }
+
+      &.selected {
+        background: #3a4a60;
+
+        td {
+          color: #fff;
+        }
+      }
+    }
+  }
+
+  .til-selection {
+    padding: 8px 12px;
+    background: #252525;
+    border-top: 1px solid #333;
+    color: #aaa;
+    font-size: 11px;
+
+    strong {
+      color: #a94;
+    }
+  }
+}
