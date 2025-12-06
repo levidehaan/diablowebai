@@ -9,6 +9,7 @@ module.exports = {
     '<rootDir>/tests/neural.test.js',
     '<rootDir>/tests/campaign.test.js',
     '<rootDir>/tests/toolSystem.test.js',
+    '<rootDir>/tests/mpq-real-mocks.test.js',
   ],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   transform: {
