@@ -745,3 +745,390 @@ body, #root, .App {
     50% { opacity: 0.6; }
   }
 }
+
+// ============================================
+// DIABLO-THEMED MAIN MENU
+// ============================================
+
+.diablo-menu {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  pointer-events: auto;
+
+  // Dark stone background with border
+  background:
+    linear-gradient(180deg, rgba(30, 15, 5, 0.98) 0%, rgba(15, 8, 2, 0.99) 100%);
+  border: 3px solid #4a3520;
+  border-radius: 4px;
+  box-shadow:
+    0 0 40px rgba(0, 0, 0, 0.8),
+    inset 0 0 60px rgba(0, 0, 0, 0.5),
+    0 0 100px rgba(139, 69, 19, 0.3);
+  padding: 24px;
+
+  // Corner decorations
+  &::before, &::after {
+    content: '';
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    border: 2px solid #8b4513;
+  }
+  &::before {
+    top: 8px;
+    left: 8px;
+    border-right: none;
+    border-bottom: none;
+  }
+  &::after {
+    bottom: 8px;
+    right: 8px;
+    border-left: none;
+    border-top: none;
+  }
+
+  // Header
+  &__header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #3a2510;
+  }
+
+  &__logo {
+    width: 100px;
+    height: 100px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 20px rgba(255, 50, 0, 0.5));
+    animation: logo-glow 3s ease-in-out infinite;
+  }
+
+  &__title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 12px;
+
+    .title-main {
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 32px;
+      font-weight: bold;
+      letter-spacing: 10px;
+      color: #ffd700;
+      text-shadow:
+        0 0 10px rgba(255, 215, 0, 0.6),
+        0 0 20px rgba(255, 150, 0, 0.4),
+        2px 2px 4px rgba(0, 0, 0, 0.8);
+    }
+
+    .title-sub {
+      font-size: 10px;
+      letter-spacing: 6px;
+      color: #88ccff;
+      text-shadow: 0 0 10px rgba(100, 180, 255, 0.6);
+      margin-top: 4px;
+      text-transform: uppercase;
+    }
+  }
+
+  // Primary action
+  &__primary {
+    margin-bottom: 20px;
+  }
+
+  // Button grid
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+
+    @media (max-width: 500px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  // Footer
+  &__footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 16px;
+    border-top: 1px solid #3a2510;
+    margin-bottom: 16px;
+  }
+
+  &__link {
+    color: #888;
+    font-size: 12px;
+    cursor: pointer;
+    transition: color 0.2s;
+
+    &:hover {
+      color: #ffd700;
+    }
+  }
+
+  // Credits
+  &__credits {
+    text-align: center;
+    font-size: 10px;
+    color: #555;
+
+    p {
+      margin: 4px 0;
+    }
+
+    a {
+      color: #888;
+      text-decoration: none;
+      &:hover {
+        color: #ffd700;
+      }
+    }
+  }
+}
+
+// Diablo Button Styles
+.diablo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border: 2px solid #5a4030;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #2a1a10 0%, #1a0f08 100%);
+  color: #d4a85c;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  text-decoration: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.1), transparent);
+    transition: left 0.5s ease;
+  }
+
+  &:hover {
+    border-color: #8b6914;
+    background: linear-gradient(180deg, #3a2a18 0%, #2a1a10 100%);
+    color: #ffd700;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+    box-shadow: 0 0 20px rgba(139, 105, 20, 0.4);
+
+    &::before {
+      left: 100%;
+    }
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  .btn-icon {
+    font-size: 18px;
+    opacity: 0.8;
+  }
+
+  .btn-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .btn-label {
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 2px;
+  }
+
+  .btn-sub {
+    font-size: 11px;
+    color: #888;
+    margin-top: 2px;
+  }
+
+  // Primary button - large and prominent
+  &--primary {
+    width: 100%;
+    padding: 20px 24px;
+    border-color: #8b6914;
+    background: linear-gradient(180deg, #3a2510 0%, #251508 100%);
+    font-size: 18px;
+
+    .btn-icon {
+      font-size: 28px;
+      color: #ff6600;
+    }
+
+    .btn-label {
+      font-size: 20px;
+      letter-spacing: 3px;
+    }
+
+    &:hover {
+      border-color: #ffd700;
+      box-shadow:
+        0 0 30px rgba(255, 102, 0, 0.4),
+        inset 0 0 20px rgba(255, 102, 0, 0.1);
+
+      .btn-icon {
+        animation: fire-pulse 0.5s ease-in-out infinite;
+      }
+    }
+  }
+
+  // Glowing state for active campaign
+  &--glow {
+    border-color: #ff6600;
+    animation: glow-pulse 2s ease-in-out infinite;
+
+    .btn-icon {
+      color: #ff4400;
+      animation: fire-pulse 1s ease-in-out infinite;
+    }
+  }
+
+  // Secondary buttons
+  &--secondary {
+    .btn-icon {
+      font-size: 16px;
+    }
+  }
+
+  // Ghost button (settings)
+  &--ghost {
+    background: transparent;
+    border-color: #3a3020;
+    padding: 8px 12px;
+    font-size: 12px;
+    gap: 8px;
+
+    &:hover {
+      background: rgba(58, 48, 32, 0.3);
+      border-color: #5a4030;
+    }
+  }
+}
+
+// Badge styles
+.diablo-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: linear-gradient(180deg, #4a2a10 0%, #3a1a05 100%);
+  border: 1px solid #8b6914;
+  border-radius: 3px;
+  font-size: 10px;
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-left: 8px;
+
+  &--small {
+    padding: 1px 6px;
+    font-size: 9px;
+  }
+}
+
+// Feedback styles
+.diablo-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  animation: feedback-appear 0.3s ease-out;
+
+  .feedback-icon {
+    font-size: 16px;
+  }
+
+  &--building {
+    background: rgba(255, 150, 0, 0.15);
+    border: 1px solid #8b6914;
+    color: #ffd700;
+    animation: feedback-appear 0.3s ease-out, pulse 1.5s ease-in-out infinite;
+  }
+
+  &--loading {
+    background: rgba(100, 150, 255, 0.15);
+    border: 1px solid #4a5a8a;
+    color: #88aaff;
+    animation: feedback-appear 0.3s ease-out, pulse 1.5s ease-in-out infinite;
+  }
+
+  &--loaded {
+    background: rgba(100, 200, 100, 0.15);
+    border: 1px solid #4a8a4a;
+    color: #88ff88;
+  }
+
+  &--error {
+    background: rgba(255, 100, 100, 0.15);
+    border: 1px solid #8a4a4a;
+    color: #ff8888;
+  }
+}
+
+// Animations
+@keyframes logo-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 20px rgba(255, 50, 0, 0.5));
+  }
+  50% {
+    filter: drop-shadow(0 0 30px rgba(255, 100, 0, 0.7));
+  }
+}
+
+@keyframes fire-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 102, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(255, 102, 0, 0.5);
+  }
+}
+
+@keyframes feedback-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

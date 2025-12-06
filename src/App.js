@@ -3,8 +3,10 @@ import './App.scss';
 import classNames from 'classnames';
 import ReactGA from 'react-ga';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faDownload, faCog } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faDownload, faCog, faSkull, faFire, faDungeon, faMagic, faGamepad, faSave } from '@fortawesome/free-solid-svg-icons';
 import getPlayerName from './api/savefile';
+import { SplashScreen } from './SplashScreen';
+import './SplashScreen.scss';
 
 import { mapStackTrace } from 'sourcemapped-stacktrace';
 
@@ -112,6 +114,8 @@ class App extends React.Component {
     loading: false,
     dropping: 0,
     has_spawn: false,
+    // Splash screen
+    showSplash: true,
     // AI Configuration state
     showAIConfig: false,
     aiConfigured: false,
@@ -1119,73 +1123,125 @@ class App extends React.Component {
       );
     } else if (!started) {
       return (
-        <div className="start">
-          <p>
-            This is a web port of the original Diablo game, based on source code reconstructed by
-            GalaXyHaXz and devilution team. The project page with information and links can be found over here <Link href="https://github.com/d07RiV/diabloweb">https://github.com/d07RiV/diabloweb</Link>
-          </p>
-          <p>
-            If you own the original game, you can drop the original DIABDAT.MPQ onto this page or click the button below to start playing.
-            The game can be purchased from <Link href="https://www.gog.com/game/diablo">GoG</Link>.
-            {" "}<span className="link" onClick={() => this.setState({compress: true})}>Click here to compress the MPQ, greatly reducing its size.</span>
-          </p>
-          {!has_spawn && (
-            <p>
-              Or you can play the shareware version for free (50MB download).
-            </p>
-          )}
-          <form>
-            <label htmlFor="loadFile" className="startButton">Select MPQ</label>
-            <input accept=".mpq" type="file" id="loadFile" style={{display: "none"}} onChange={this.parseFile}/>
-          </form>
-          <div className="startButton" onClick={() => this.start()}>Play Shareware</div>
-          {!!save_names && <div className="startButton" onClick={this.showSaves}>Manage Saves</div>}
+        <div className="diablo-menu">
+          {/* Header with Logo */}
+          <div className="diablo-menu__header">
+            <img src={process.env.PUBLIC_URL + '/logo.png'} alt="DIABLO AI" className="diablo-menu__logo" />
+            <div className="diablo-menu__title">
+              <span className="title-main">DIABLO</span>
+              <span className="title-sub">NEURAL AUGMENTED</span>
+            </div>
+          </div>
 
-          {/* Neural Augmentation Features */}
-          <div className="neural-section">
-            <div className="neural-section__title">Neural Augmentation</div>
+          {/* Main Action - AI Campaign */}
+          <div className="diablo-menu__primary">
+            {activeCampaign ? (
+              <button className="diablo-btn diablo-btn--primary diablo-btn--glow" onClick={() => this.buildAndPlayCampaign(activeCampaign)}>
+                <FontAwesomeIcon icon={faFire} className="btn-icon" />
+                <span className="btn-text">
+                  <span className="btn-label">ENTER THE DARKNESS</span>
+                  <span className="btn-sub">{activeCampaign.name}</span>
+                </span>
+              </button>
+            ) : (
+              <button className="diablo-btn diablo-btn--primary" onClick={this.openCampaignManager}>
+                <FontAwesomeIcon icon={faSkull} className="btn-icon" />
+                <span className="btn-text">
+                  <span className="btn-label">NEW ADVENTURE</span>
+                  <span className="btn-sub">Create AI Campaign</span>
+                </span>
+              </button>
+            )}
+          </div>
 
-            {/* Consolidated Build & Play button - builds MPQ and starts modded game */}
+          {/* Menu Grid */}
+          <div className="diablo-menu__grid">
+            <button className="diablo-btn diablo-btn--secondary" onClick={() => this.start()}>
+              <FontAwesomeIcon icon={faGamepad} className="btn-icon" />
+              <span className="btn-text">Play Shareware</span>
+            </button>
+
+            <form style={{margin: 0}}>
+              <label htmlFor="loadFile" className="diablo-btn diablo-btn--secondary">
+                <FontAwesomeIcon icon={faDungeon} className="btn-icon" />
+                <span className="btn-text">Load MPQ</span>
+              </label>
+              <input accept=".mpq" type="file" id="loadFile" style={{display: "none"}} onChange={this.parseFile}/>
+            </form>
+
             {activeCampaign && (
-              <div className="startButton build-play-btn primary-play" onClick={() => this.buildAndPlayCampaign(activeCampaign)}>
-                Build &amp; Play
-                <span className="campaign-name-badge">{activeCampaign.name}</span>
-              </div>
+              <button className="diablo-btn diablo-btn--secondary" onClick={this.openCampaignManager}>
+                <FontAwesomeIcon icon={faMagic} className="btn-icon" />
+                <span className="btn-text">Change Campaign</span>
+              </button>
             )}
 
-            <div className="startButton campaign-btn" onClick={this.openCampaignManager}>
-              {activeCampaign ? 'Change Campaign' : 'AI Campaigns'}
-              {activeCampaign && <span className="mode-badge">Ready</span>}
-            </div>
-            <div className="startButton character-btn" onClick={this.openCharacterCreator}>
-              Character Creator
-            </div>
-            <div className="startButton mod-editor-btn" onClick={this.openModEditor}>
-              Mod Editor
-              {this.state.modifiedMpq && <span className="mode-badge">Modified</span>}
-            </div>
-            <div className="startButton ai-settings" onClick={this.openAISettings}>
-              <FontAwesomeIcon icon={faCog} /> AI Settings
-              {this.state.aiConfig?.mockMode && <span className="mode-badge">Mock Mode</span>}
-              {this.state.aiConfig?.provider && <span className="mode-badge">{this.state.aiConfig.provider}</span>}
-            </div>
+            <button className="diablo-btn diablo-btn--secondary" onClick={this.openCharacterCreator}>
+              <FontAwesomeIcon icon={faSkull} className="btn-icon" />
+              <span className="btn-text">Character Creator</span>
+            </button>
 
-            {/* Mod Load Feedback */}
-            {this.state.modLoadFeedback && (
-              <div className={`mod-feedback mod-feedback--${this.state.modLoadFeedback.status}`}>
-                {this.state.modLoadFeedback.message}
-              </div>
+            <button className="diablo-btn diablo-btn--secondary" onClick={this.openModEditor}>
+              <FontAwesomeIcon icon={faDungeon} className="btn-icon" />
+              <span className="btn-text">Mod Editor</span>
+              {this.state.modifiedMpq && <span className="diablo-badge">MOD</span>}
+            </button>
+
+            {!!save_names && (
+              <button className="diablo-btn diablo-btn--secondary" onClick={this.showSaves}>
+                <FontAwesomeIcon icon={faSave} className="btn-icon" />
+                <span className="btn-text">Manage Saves</span>
+              </button>
             )}
+          </div>
+
+          {/* Footer Settings */}
+          <div className="diablo-menu__footer">
+            <button className="diablo-btn diablo-btn--ghost" onClick={this.openAISettings}>
+              <FontAwesomeIcon icon={faCog} />
+              <span>AI Settings</span>
+              {this.state.aiConfig?.provider && <span className="diablo-badge diablo-badge--small">{this.state.aiConfig.provider}</span>}
+            </button>
+
+            <span className="diablo-menu__link" onClick={() => this.setState({compress: true})}>
+              Compress MPQ
+            </span>
+          </div>
+
+          {/* Build Feedback */}
+          {this.state.modLoadFeedback && (
+            <div className={`diablo-feedback diablo-feedback--${this.state.modLoadFeedback.status}`}>
+              <span className="feedback-icon">
+                {this.state.modLoadFeedback.status === 'building' && '⚙️'}
+                {this.state.modLoadFeedback.status === 'loading' && '⏳'}
+                {this.state.modLoadFeedback.status === 'loaded' && '✓'}
+                {this.state.modLoadFeedback.status === 'error' && '✗'}
+              </span>
+              {this.state.modLoadFeedback.message}
+            </div>
+          )}
+
+          {/* Credits */}
+          <div className="diablo-menu__credits">
+            <p>Based on <Link href="https://github.com/AJenbo/devilutionX">DevilutionX</Link> by GalaXyHaXz</p>
+            <p>Original game: <Link href="https://www.gog.com/game/diablo">GOG.com</Link></p>
           </div>
         </div>
       );
     }
   }
 
+  handleSplashComplete = () => {
+    this.setState({ showSplash: false });
+  }
+
   render() {
-    const {started, error, dropping, showAIConfig} = this.state;
+    const {started, error, dropping, showAIConfig, showSplash} = this.state;
     return (
       <div className={classNames("App", {touch: this.touchControls, started, dropping, keyboard: !!this.showKeyboard})} ref={this.setElement}>
+        {/* Splash Screen */}
+        {showSplash && <SplashScreen onComplete={this.handleSplashComplete} />}
+
         {/* AI Settings button - visible when game is running */}
         {started && !error && !showAIConfig && (
           <button className="ai-settings-btn" onClick={this.openAISettings} title="AI Settings">
