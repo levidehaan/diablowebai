@@ -50,6 +50,15 @@ import { TownGenerator, STARTING_AREA_TYPES, getTownSectorPaths } from './TownGe
 import dungeonConfig, { DungeonConfig, DUNGEON_THEMES as DUNGEON_CONFIG_THEMES, DIFFICULTY_PRESETS, getThemeForLevel } from './DungeonConfig';
 import { CampaignPipeline, PIPELINE_STAGES, getOrderedStages } from './CampaignPipeline';
 
+// Preset Asset Library System
+import { presetEngine, parsePresetShorthand, parseMultiplePresets, SeededRandom, PRESET_LIBRARY } from './PresetLibrary';
+import { compositor, BlueprintBuilder, LAYER_TYPES, BIOMES } from './LayeredCompositor';
+import { PathWeaver, AStarPathfinder, PATH_STYLES, DungeonPaths } from './PathWeaver';
+import { macroProcessor, parseMacro, parseMultipleMacros, expandShorthand } from './MacroProcessor';
+import { seedExpander, parseSeedNotation, toSeedNotation, GENERATION_TEMPLATES, DENSITY_LEVELS, THEME_MODIFIERS, DIFFICULTY_MODIFIERS } from './SeedExpander';
+import { simulator, LocalSimulator, SimulationCache } from './LocalSimulator';
+import { presetStorage, STORES as STORAGE_STORES } from './PresetStorage';
+
 // Tool definitions for AI
 export const MOD_TOOLS = {
   /**
@@ -4270,6 +4279,1405 @@ export const MOD_TOOLS = {
         validation,
         message: 'Campaign finalized and ready to play! Use buildMod to create the MPQ.',
       };
+    },
+  },
+
+  // =====================================================
+  // PRESET ASSET LIBRARY TOOLS
+  // =====================================================
+
+  /**
+   * List available presets
+   */
+  listPresets: {
+    name: 'listPresets',
+    description: 'List all available preset templates for quick level generation',
+    parameters: {
+      category: {
+        type: 'string',
+        description: 'Filter by category (town, dungeon, nature, entity, composite)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const presets = presetEngine.listPresets(params.category);
+        const categories = [...new Set(presets.map(p => p.category))];
+
+        return {
+          success: true,
+          presets,
+          count: presets.length,
+          categories,
+          usage: 'Use placePreset to instantiate a preset with parameters',
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Place a preset at a location
+   */
+  placePreset: {
+    name: 'placePreset',
+    description: 'Place a preset asset at a specific location with parametric instantiation',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file to modify',
+        required: true,
+      },
+      preset: {
+        type: 'string',
+        description: 'Preset name (e.g., town_cluster, forest_patch, room_cluster)',
+        required: true,
+      },
+      params: {
+        type: 'object',
+        description: 'Preset parameters (count, radius, density, seed, etc.)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, mpqReader } = context;
+
+      try {
+        // Get or create DUN data
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else if (mpqReader) {
+          const buffer = mpqReader.read(params.path);
+          if (buffer) {
+            dunData = DUNParser.parse(buffer);
+          }
+        }
+
+        if (!dunData) {
+          // Create new level
+          const width = params.params?.width || 40;
+          const height = params.params?.height || 40;
+          dunData = DUNParser.createEmpty(width, height, 0);
+        }
+
+        // Create grid object for preset engine
+        const grid = {
+          width: dunData.width,
+          height: dunData.height,
+          tiles: dunData.baseTiles,
+          monsters: dunData.monsters,
+          objects: dunData.objects,
+          hasMonsters: dunData.hasMonsters,
+          hasObjects: dunData.hasObjects,
+        };
+
+        // Instantiate preset
+        const result = presetEngine.instantiate(grid, params.preset, params.params || {});
+
+        // Update DUN data
+        dunData.baseTiles = grid.tiles;
+        dunData.monsters = grid.monsters;
+        dunData.objects = grid.objects;
+        dunData.hasMonsters = grid.hasMonsters;
+        dunData.hasObjects = grid.hasObjects;
+
+        // Store modified version
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+          isNew: !mpqReader?.read(params.path),
+        });
+
+        const preview = DUNParser.visualize(dunData);
+
+        return {
+          success: true,
+          path: params.path,
+          preset: params.preset,
+          params: result.params,
+          seed: result.seed,
+          result: result.result,
+          preview,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Compose a level from layered blueprint
+   */
+  composeLevel: {
+    name: 'composeLevel',
+    description: 'Compose a complete level from a layered blueprint with terrain, structures, foliage, and entities',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to save the composed DUN file',
+        required: true,
+      },
+      blueprint: {
+        type: 'object',
+        description: 'Level blueprint with width, height, seed, and layers array',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      try {
+        // Validate blueprint
+        const validation = compositor.validateBlueprint(params.blueprint);
+        if (!validation.valid) {
+          return {
+            success: false,
+            error: 'Invalid blueprint',
+            errors: validation.errors,
+            warnings: validation.warnings,
+          };
+        }
+
+        // Compose the level
+        const result = compositor.compose(params.blueprint);
+
+        // Store in modified files
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: result.dunData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: params.path,
+          width: result.width,
+          height: result.height,
+          seed: result.seed,
+          layerResults: result.layerResults,
+          preview: result.preview,
+          warnings: validation.warnings,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Generate level from seed notation
+   */
+  generateFromSeed: {
+    name: 'generateFromSeed',
+    description: 'Generate a complete level from a seed value and optional modifiers',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to save the generated DUN file',
+        required: true,
+      },
+      seed: {
+        type: 'number',
+        description: 'Random seed for deterministic generation',
+        required: false,
+      },
+      template: {
+        type: 'string',
+        description: 'Generation template (village, dungeon, arena, forest, ruins)',
+        required: false,
+      },
+      mods: {
+        type: 'object',
+        description: 'Modifiers: density, theme, difficulty, size',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      try {
+        // Expand seed to full level
+        const result = seedExpander.expand({
+          seed: params.seed || Date.now(),
+          template: params.template || 'village',
+          mods: params.mods || {},
+        });
+
+        // Store in modified files
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: result.dunData,
+          modified: Date.now(),
+          isNew: true,
+        });
+
+        return {
+          success: true,
+          path: params.path,
+          seed: result.seed,
+          template: result.template,
+          mods: result.mods,
+          width: result.width,
+          height: result.height,
+          preview: result.preview,
+          note: 'Use the same seed to regenerate identical levels',
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Process macro shorthand
+   */
+  processMacros: {
+    name: 'processMacros',
+    description: 'Process macro shorthand notation to generate level content (e.g., "@town:medium *trees:50 #mob:skeleton[5]")',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file to modify',
+        required: true,
+      },
+      macros: {
+        type: 'string',
+        description: 'Macro string (e.g., "@town:medium *trees:50 #mob:skeleton[5]@10,15")',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, mpqReader } = context;
+
+      try {
+        // Get or create DUN data
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else if (mpqReader) {
+          const buffer = mpqReader.read(params.path);
+          if (buffer) {
+            dunData = DUNParser.parse(buffer);
+          }
+        }
+
+        if (!dunData) {
+          dunData = DUNParser.createEmpty(40, 40, 0);
+        }
+
+        // Create grid
+        const grid = {
+          width: dunData.width,
+          height: dunData.height,
+          tiles: dunData.baseTiles,
+          monsters: dunData.monsters,
+          objects: dunData.objects,
+          hasMonsters: dunData.hasMonsters,
+          hasObjects: dunData.hasObjects,
+        };
+
+        // Expand shorthand aliases
+        const expanded = expandShorthand(params.macros);
+
+        // Process macros
+        const result = macroProcessor.process(grid, expanded);
+
+        // Update DUN data
+        dunData.baseTiles = grid.tiles;
+        dunData.monsters = grid.monsters;
+        dunData.objects = grid.objects;
+        dunData.hasMonsters = grid.hasMonsters;
+        dunData.hasObjects = grid.hasObjects;
+
+        // Store modified version
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+        });
+
+        const preview = DUNParser.visualize(dunData);
+
+        return {
+          success: result.errors.length === 0,
+          path: params.path,
+          macrosProcessed: result.processed,
+          operations: result.operations,
+          errors: result.errors,
+          preview,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * List available macros
+   */
+  listMacros: {
+    name: 'listMacros',
+    description: 'List all available macro shortcuts for quick content generation',
+    parameters: {},
+    execute: async () => {
+      try {
+        const macros = macroProcessor.listMacros();
+
+        // Group by type
+        const byType = {};
+        for (const macro of macros) {
+          if (!byType[macro.type]) byType[macro.type] = [];
+          byType[macro.type].push(macro);
+        }
+
+        return {
+          success: true,
+          macros,
+          byType,
+          count: macros.length,
+          prefixes: {
+            '@': 'Preset instantiation',
+            '^': 'Path/trail generation',
+            '*': 'Scatter/distribution',
+            '#': 'Entity placement',
+            '!': 'Object placement',
+            '%': 'Terrain/biome',
+            '&': 'Composite operations',
+          },
+          examples: [
+            '@town:medium - Medium town cluster',
+            '*trees:50 - Scatter 50 trees',
+            '#mob:skeleton[5]@10,15 - 5 skeletons at position',
+            '!chest:rare@20,20 - Rare chest at position',
+          ],
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Weave a path between points
+   */
+  weavePath: {
+    name: 'weavePath',
+    description: 'Generate a path between points with optional curviness and decorations',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file to modify',
+        required: true,
+      },
+      start: {
+        type: 'array',
+        description: 'Start position [x, y]',
+        required: true,
+      },
+      end: {
+        type: 'array',
+        description: 'End position [x, y]',
+        required: true,
+      },
+      waypoints: {
+        type: 'array',
+        description: 'Optional intermediate waypoints [[x,y], [x,y]]',
+        required: false,
+      },
+      style: {
+        type: 'string',
+        description: 'Path style (straight, winding, winding_forest, cave_tunnel, dungeon_corridor, road, river)',
+        required: false,
+      },
+      obstacles: {
+        type: 'array',
+        description: 'Positions or objects to avoid',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, mpqReader } = context;
+
+      try {
+        // Get DUN data
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else if (mpqReader) {
+          const buffer = mpqReader.read(params.path);
+          if (buffer) {
+            dunData = DUNParser.parse(buffer);
+          }
+        }
+
+        if (!dunData) {
+          return { success: false, error: 'File not found' };
+        }
+
+        // Create grid
+        const grid = {
+          width: dunData.width,
+          height: dunData.height,
+          tiles: dunData.baseTiles,
+        };
+
+        // Create path weaver
+        const weaver = new PathWeaver(grid);
+
+        // Weave path
+        const result = weaver.weave({
+          start: params.start,
+          end: params.end,
+          waypoints: params.waypoints || [],
+          obstacles: params.obstacles || [],
+          style: params.style || 'winding',
+        });
+
+        // Update DUN data
+        dunData.baseTiles = grid.tiles;
+
+        // Store modified version
+        modifiedFiles.set(params.path, {
+          type: 'dun',
+          data: dunData,
+          modified: Date.now(),
+        });
+
+        const preview = DUNParser.visualize(dunData);
+
+        return {
+          success: true,
+          path: params.path,
+          style: result.style,
+          pathLength: result.pathLength,
+          tilesModified: result.tilesModified,
+          decorationsPlaced: result.decorationsPlaced,
+          preview,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Simulate placement with collision detection
+   */
+  simulatePlacement: {
+    name: 'simulatePlacement',
+    description: 'Test a placement operation and check for collisions before applying',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file to simulate on',
+        required: true,
+      },
+      query: {
+        type: 'string',
+        description: 'Simulation query (e.g., "place @house at [10,10]; check collision")',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, mpqReader } = context;
+
+      try {
+        // Get DUN data
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else if (mpqReader) {
+          const buffer = mpqReader.read(params.path);
+          if (buffer) {
+            dunData = DUNParser.parse(buffer);
+          }
+        }
+
+        if (!dunData) {
+          return { success: false, error: 'File not found' };
+        }
+
+        // Load into simulator
+        simulator.loadFromDUN(dunData);
+
+        // Execute query
+        const result = simulator.query(params.query);
+
+        return {
+          success: true,
+          path: params.path,
+          query: params.query,
+          results: result.results,
+          preview: simulator.getPreview(),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Validate level connectivity and playability
+   */
+  validatePlayability: {
+    name: 'validatePlayability',
+    description: 'Check if a level is fully connected and playable',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'Path to DUN file to validate',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, mpqReader } = context;
+
+      try {
+        // Get DUN data
+        let dunData;
+        if (modifiedFiles.has(params.path)) {
+          dunData = modifiedFiles.get(params.path).data;
+        } else if (mpqReader) {
+          const buffer = mpqReader.read(params.path);
+          if (buffer) {
+            dunData = DUNParser.parse(buffer);
+          }
+        }
+
+        if (!dunData) {
+          return { success: false, error: 'File not found' };
+        }
+
+        // Load into simulator
+        simulator.loadFromDUN(dunData);
+
+        // Run validation
+        const validation = simulator.validate();
+
+        return {
+          success: true,
+          path: params.path,
+          valid: validation.valid,
+          issues: validation.issues,
+          connectivity: validation.connectivity,
+          stairs: validation.stairs,
+          overlaps: validation.overlaps,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get generation templates
+   */
+  getTemplates: {
+    name: 'getTemplates',
+    description: 'Get list of available generation templates for seed-based generation',
+    parameters: {},
+    execute: async () => {
+      try {
+        const templates = seedExpander.listTemplates();
+
+        return {
+          success: true,
+          templates,
+          modifiers: {
+            density: Object.keys(DENSITY_LEVELS),
+            theme: Object.keys(THEME_MODIFIERS),
+            difficulty: Object.keys(DIFFICULTY_MODIFIERS),
+          },
+          usage: 'Use generateFromSeed with template and mods to create levels',
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Quick dungeon sequence generation
+   */
+  generateDungeonSequence: {
+    name: 'generateDungeonSequence',
+    description: 'Generate a sequence of connected dungeon levels',
+    parameters: {
+      basePath: {
+        type: 'string',
+        description: 'Base path for level files (e.g., "levels/l1data/ai_level")',
+        required: true,
+      },
+      count: {
+        type: 'number',
+        description: 'Number of levels to generate (default 4)',
+        required: false,
+      },
+      seed: {
+        type: 'number',
+        description: 'Base seed for generation',
+        required: false,
+      },
+      template: {
+        type: 'string',
+        description: 'Template to use (dungeon, arena)',
+        required: false,
+      },
+      mods: {
+        type: 'object',
+        description: 'Base modifiers for all levels',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      try {
+        // Generate sequence
+        const sequence = seedExpander.expandSequence({
+          seed: params.seed || Date.now(),
+          template: params.template || 'dungeon',
+          mods: params.mods || {},
+        }, params.count || 4);
+
+        const generatedFiles = [];
+
+        // Store each level
+        for (const level of sequence) {
+          const levelPath = `${params.basePath}${level.levelIndex + 1}.dun`;
+
+          modifiedFiles.set(levelPath, {
+            type: 'dun',
+            data: level.dunData,
+            modified: Date.now(),
+            isNew: true,
+          });
+
+          generatedFiles.push({
+            path: levelPath,
+            levelIndex: level.levelIndex,
+            seed: level.seed,
+            mods: level.mods,
+          });
+        }
+
+        return {
+          success: true,
+          basePath: params.basePath,
+          levelsGenerated: sequence.length,
+          files: generatedFiles,
+          seeds: sequence.map(l => l.seed),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  // ============================================================
+  // PRESET STORAGE TOOLS
+  // ============================================================
+
+  /**
+   * Save a custom preset to IndexedDB
+   */
+  saveCustomPreset: {
+    name: 'saveCustomPreset',
+    description: 'Save a custom preset definition to persistent storage',
+    parameters: {
+      name: {
+        type: 'string',
+        description: 'Unique name for the preset',
+        required: true,
+      },
+      category: {
+        type: 'string',
+        description: 'Category (e.g., "dungeon", "town", "monster", "custom")',
+        required: false,
+      },
+      description: {
+        type: 'string',
+        description: 'Description of what the preset does',
+        required: false,
+      },
+      tags: {
+        type: 'array',
+        description: 'Array of tags for searchability',
+        required: false,
+      },
+      defaults: {
+        type: 'object',
+        description: 'Default parameter values for the preset',
+        required: true,
+      },
+      generatorType: {
+        type: 'string',
+        description: 'Type of generator (e.g., "bsp", "cave", "scatter", "cluster")',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const preset = await presetStorage.savePreset({
+          name: params.name,
+          category: params.category || 'custom',
+          description: params.description || '',
+          tags: params.tags || [],
+          defaults: params.defaults,
+          generatorType: params.generatorType || 'custom',
+        });
+
+        return {
+          success: true,
+          presetId: preset.id,
+          name: preset.name,
+          category: preset.category,
+          message: `Preset "${preset.name}" saved successfully`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Load a custom preset from storage
+   */
+  loadCustomPreset: {
+    name: 'loadCustomPreset',
+    description: 'Load a custom preset from persistent storage by ID',
+    parameters: {
+      presetId: {
+        type: 'string',
+        description: 'The ID of the preset to load',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const preset = await presetStorage.loadPreset(params.presetId);
+
+        if (!preset) {
+          return { success: false, error: 'Preset not found' };
+        }
+
+        return {
+          success: true,
+          preset: {
+            id: preset.id,
+            name: preset.name,
+            category: preset.category,
+            description: preset.description,
+            tags: preset.tags,
+            defaults: preset.defaults,
+            generatorType: preset.generatorType,
+            createdAt: preset.createdAt,
+            updatedAt: preset.updatedAt,
+          },
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * List saved custom presets
+   */
+  listSavedPresets: {
+    name: 'listSavedPresets',
+    description: 'List all custom presets saved in storage with optional filtering',
+    parameters: {
+      category: {
+        type: 'string',
+        description: 'Filter by category',
+        required: false,
+      },
+      tag: {
+        type: 'string',
+        description: 'Filter by tag',
+        required: false,
+      },
+      name: {
+        type: 'string',
+        description: 'Search by name (partial match)',
+        required: false,
+      },
+    },
+    execute: async (context, params = {}) => {
+      try {
+        const presets = await presetStorage.listPresets({
+          category: params.category,
+          tag: params.tag,
+          name: params.name,
+        });
+
+        return {
+          success: true,
+          count: presets.length,
+          presets: presets.map(p => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            description: p.description,
+            tags: p.tags,
+            createdAt: p.createdAt,
+          })),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Delete a custom preset
+   */
+  deleteCustomPreset: {
+    name: 'deleteCustomPreset',
+    description: 'Delete a custom preset from storage',
+    parameters: {
+      presetId: {
+        type: 'string',
+        description: 'The ID of the preset to delete',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        await presetStorage.deletePreset(params.presetId);
+
+        return {
+          success: true,
+          message: `Preset ${params.presetId} deleted successfully`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Save a composed blueprint
+   */
+  saveBlueprint: {
+    name: 'saveBlueprint',
+    description: 'Save a composed level blueprint to persistent storage',
+    parameters: {
+      name: {
+        type: 'string',
+        description: 'Name for the blueprint',
+        required: true,
+      },
+      description: {
+        type: 'string',
+        description: 'Description of the blueprint',
+        required: false,
+      },
+      width: {
+        type: 'number',
+        description: 'Blueprint width',
+        required: true,
+      },
+      height: {
+        type: 'number',
+        description: 'Blueprint height',
+        required: true,
+      },
+      seed: {
+        type: 'number',
+        description: 'Seed used for generation',
+        required: false,
+      },
+      layers: {
+        type: 'array',
+        description: 'Array of layer configurations',
+        required: true,
+      },
+      metadata: {
+        type: 'object',
+        description: 'Additional metadata',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const blueprint = await presetStorage.saveBlueprint({
+          name: params.name,
+          description: params.description || '',
+          width: params.width,
+          height: params.height,
+          seed: params.seed,
+          layers: params.layers,
+          metadata: params.metadata || {},
+        });
+
+        return {
+          success: true,
+          blueprintId: blueprint.id,
+          name: blueprint.name,
+          message: `Blueprint "${blueprint.name}" saved successfully`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Load a saved blueprint
+   */
+  loadBlueprint: {
+    name: 'loadBlueprint',
+    description: 'Load a saved blueprint from storage',
+    parameters: {
+      blueprintId: {
+        type: 'string',
+        description: 'The ID of the blueprint to load',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const blueprint = await presetStorage.loadBlueprint(params.blueprintId);
+
+        if (!blueprint) {
+          return { success: false, error: 'Blueprint not found' };
+        }
+
+        return {
+          success: true,
+          blueprint,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * List saved blueprints
+   */
+  listBlueprints: {
+    name: 'listBlueprints',
+    description: 'List all saved blueprints',
+    parameters: {
+      name: {
+        type: 'string',
+        description: 'Search by name (partial match)',
+        required: false,
+      },
+    },
+    execute: async (context, params = {}) => {
+      try {
+        const blueprints = await presetStorage.listBlueprints({
+          name: params.name,
+        });
+
+        return {
+          success: true,
+          count: blueprints.length,
+          blueprints,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Save a seed configuration
+   */
+  saveSeedConfig: {
+    name: 'saveSeedConfig',
+    description: 'Save a named seed configuration for later reuse',
+    parameters: {
+      name: {
+        type: 'string',
+        description: 'Name for the seed configuration',
+        required: true,
+      },
+      seed: {
+        type: 'number',
+        description: 'The seed value',
+        required: true,
+      },
+      template: {
+        type: 'string',
+        description: 'Template name (e.g., "dungeon", "village")',
+        required: true,
+      },
+      modifiers: {
+        type: 'object',
+        description: 'Modifier settings',
+        required: false,
+      },
+      description: {
+        type: 'string',
+        description: 'Description of what this seed produces',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        // Generate notation from seed config
+        const notation = toSeedNotation(params.seed, params.template, params.modifiers || {});
+
+        const seedConfig = await presetStorage.saveSeed({
+          name: params.name,
+          seed: params.seed,
+          template: params.template,
+          modifiers: params.modifiers || {},
+          notation,
+          description: params.description || '',
+        });
+
+        return {
+          success: true,
+          seedId: seedConfig.id,
+          name: seedConfig.name,
+          notation: seedConfig.notation,
+          message: `Seed config "${seedConfig.name}" saved successfully`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * List saved seed configurations
+   */
+  listSeedConfigs: {
+    name: 'listSeedConfigs',
+    description: 'List all saved seed configurations',
+    parameters: {
+      template: {
+        type: 'string',
+        description: 'Filter by template',
+        required: false,
+      },
+    },
+    execute: async (context, params = {}) => {
+      try {
+        const seeds = await presetStorage.listSeeds({
+          template: params.template,
+        });
+
+        return {
+          success: true,
+          count: seeds.length,
+          seeds: seeds.map(s => ({
+            id: s.id,
+            name: s.name,
+            seed: s.seed,
+            template: s.template,
+            notation: s.notation,
+            description: s.description,
+          })),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Save a custom macro
+   */
+  saveCustomMacro: {
+    name: 'saveCustomMacro',
+    description: 'Save a custom macro shorthand definition',
+    parameters: {
+      name: {
+        type: 'string',
+        description: 'Full name for the macro',
+        required: true,
+      },
+      shorthand: {
+        type: 'string',
+        description: 'Shorthand notation (e.g., "@mypreset")',
+        required: true,
+      },
+      expansion: {
+        type: 'string',
+        description: 'What the macro expands to',
+        required: true,
+      },
+      category: {
+        type: 'string',
+        description: 'Category for organization',
+        required: false,
+      },
+      description: {
+        type: 'string',
+        description: 'Description of what the macro does',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const macro = await presetStorage.saveMacro({
+          name: params.name,
+          shorthand: params.shorthand,
+          expansion: params.expansion,
+          category: params.category || 'custom',
+          description: params.description || '',
+        });
+
+        return {
+          success: true,
+          macroId: macro.id,
+          shorthand: macro.shorthand,
+          message: `Macro "${macro.shorthand}" saved successfully`,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * List saved macros
+   */
+  listSavedMacros: {
+    name: 'listSavedMacros',
+    description: 'List all custom macros saved in storage',
+    parameters: {
+      category: {
+        type: 'string',
+        description: 'Filter by category',
+        required: false,
+      },
+    },
+    execute: async (context, params = {}) => {
+      try {
+        const macros = await presetStorage.listMacros({
+          category: params.category,
+        });
+
+        return {
+          success: true,
+          count: macros.length,
+          macros: macros.map(m => ({
+            id: m.id,
+            name: m.name,
+            shorthand: m.shorthand,
+            expansion: m.expansion,
+            category: m.category,
+            description: m.description,
+          })),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Export all saved data
+   */
+  exportStoredData: {
+    name: 'exportStoredData',
+    description: 'Export all presets, blueprints, macros, and seeds as JSON',
+    parameters: {},
+    execute: async (context, params) => {
+      try {
+        const data = await presetStorage.exportAll();
+
+        return {
+          success: true,
+          data,
+          stats: {
+            presets: data.presets.length,
+            blueprints: data.blueprints.length,
+            templates: data.templates.length,
+            macros: data.macros.length,
+            seeds: data.seeds.length,
+          },
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Import data from JSON
+   */
+  importStoredData: {
+    name: 'importStoredData',
+    description: 'Import presets, blueprints, macros, and seeds from JSON',
+    parameters: {
+      data: {
+        type: 'object',
+        description: 'The exported data object to import',
+        required: true,
+      },
+      merge: {
+        type: 'boolean',
+        description: 'If true, merge with existing data; if false, create new IDs',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const results = await presetStorage.importAll(params.data, {
+          merge: params.merge !== false,
+        });
+
+        return {
+          success: true,
+          results,
+          message: 'Data imported successfully',
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get storage statistics
+   */
+  getStorageStats: {
+    name: 'getStorageStats',
+    description: 'Get statistics about stored presets, blueprints, and other data',
+    parameters: {},
+    execute: async (context, params) => {
+      try {
+        const stats = await presetStorage.getStats();
+
+        return {
+          success: true,
+          stats,
+          storeNames: Object.keys(stats),
+          totalItems: Object.values(stats).reduce((sum, count) => sum + count, 0),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Clear all stored data
+   */
+  clearAllStoredData: {
+    name: 'clearAllStoredData',
+    description: 'Clear all stored presets, blueprints, macros, and seeds (use with caution)',
+    parameters: {
+      confirm: {
+        type: 'boolean',
+        description: 'Must be true to confirm deletion',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      if (!params.confirm) {
+        return {
+          success: false,
+          error: 'Must set confirm: true to clear all data',
+        };
+      }
+
+      try {
+        await presetStorage.clearAll();
+
+        return {
+          success: true,
+          message: 'All stored data has been cleared',
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Save generation history entry (for undo/redo)
+   */
+  saveHistoryEntry: {
+    name: 'saveHistoryEntry',
+    description: 'Save a generation state for undo/redo support',
+    parameters: {
+      sessionId: {
+        type: 'string',
+        description: 'Unique session identifier',
+        required: true,
+      },
+      state: {
+        type: 'object',
+        description: 'The state to save',
+        required: true,
+      },
+      description: {
+        type: 'string',
+        description: 'Description of the operation',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const entry = await presetStorage.saveHistory(
+          params.sessionId,
+          params.state,
+          params.description || ''
+        );
+
+        return {
+          success: true,
+          historyId: entry.id,
+          timestamp: entry.timestamp,
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get generation history
+   */
+  getHistory: {
+    name: 'getHistory',
+    description: 'Get generation history for a session',
+    parameters: {
+      sessionId: {
+        type: 'string',
+        description: 'The session ID to get history for',
+        required: true,
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of entries to return (default 50)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      try {
+        const history = await presetStorage.getHistory(
+          params.sessionId,
+          params.limit || 50
+        );
+
+        return {
+          success: true,
+          count: history.length,
+          history: history.map(h => ({
+            id: h.id,
+            description: h.description,
+            timestamp: h.timestamp,
+            // Don't include full state in list, load individually if needed
+          })),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
     },
   },
 };
