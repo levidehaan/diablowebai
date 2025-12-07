@@ -718,7 +718,7 @@ export class CampaignBlueprintPanel extends Component {
         </div>
 
         <div className="locations-list">
-          {blueprint.world.locations.map(loc => (
+          {Array.from(blueprint.world?.locations?.values?.() || []).map(loc => (
             <div key={loc.id} className="location-card">
               <div className="location-header">
                 <span className={`location-type type-${loc.type}`}>{loc.type}</span>
