@@ -76,6 +76,13 @@ export class ModEditor extends Component {
       viewMode: 'preview', // 'preview', 'hex', 'editor'
       fileCategory: 'all', // 'all', 'Levels', 'Monsters', etc.
       fileSearch: '',
+      fileTypeFilter: 'all', // 'all', 'DUN', 'CEL', 'CL2', 'WAV', etc.
+      expandedCategories: new Set(['Levels']), // Categories that show all files
+      filesPerCategory: 20, // Default files to show per category
+
+      // Audio player
+      audioUrl: null,
+      isPlaying: false,
 
       // Download notice
       showDownloadNotice: false,
@@ -606,13 +613,21 @@ export class ModEditor extends Component {
    * Get grouped file list by category
    */
   getGroupedFiles = () => {
-    const { fileList, fileCategory, fileSearch } = this.state;
+    const { fileList, fileCategory, fileSearch, fileTypeFilter } = this.state;
 
     // Filter by search
     let filtered = fileList;
     if (fileSearch) {
       const search = fileSearch.toLowerCase();
       filtered = fileList.filter(f => f.toLowerCase().includes(search));
+    }
+
+    // Filter by file type
+    if (fileTypeFilter && fileTypeFilter !== 'all') {
+      filtered = filtered.filter(f => {
+        const type = getFileType(f);
+        return type.key === fileTypeFilter;
+      });
     }
 
     // Group by category
@@ -626,6 +641,49 @@ export class ModEditor extends Component {
     }
 
     return groups;
+  };
+
+  /**
+   * Toggle category expansion
+   */
+  toggleCategoryExpansion = (category) => {
+    this.setState(state => {
+      const expanded = new Set(state.expandedCategories);
+      if (expanded.has(category)) {
+        expanded.delete(category);
+      } else {
+        expanded.add(category);
+      }
+      return { expandedCategories: expanded };
+    });
+  };
+
+  /**
+   * Play audio file
+   */
+  playAudio = (data) => {
+    // Clean up previous audio
+    if (this.state.audioUrl) {
+      URL.revokeObjectURL(this.state.audioUrl);
+    }
+
+    try {
+      const blob = new Blob([data], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      this.setState({ audioUrl: url, isPlaying: true });
+    } catch (err) {
+      console.error('[ModEditor] Failed to create audio URL:', err);
+    }
+  };
+
+  /**
+   * Stop audio playback
+   */
+  stopAudio = () => {
+    if (this.state.audioUrl) {
+      URL.revokeObjectURL(this.state.audioUrl);
+    }
+    this.setState({ audioUrl: null, isPlaying: false });
   };
 
   /**
@@ -840,7 +898,7 @@ export class ModEditor extends Component {
                   ))}
                 </div>
 
-                {/* Search */}
+                {/* Search and Type Filter */}
                 <div className="file-browser-search">
                   <input
                     type="text"
@@ -848,37 +906,74 @@ export class ModEditor extends Component {
                     value={fileSearch}
                     onChange={(e) => this.setState({ fileSearch: e.target.value })}
                   />
+                  <select
+                    value={this.state.fileTypeFilter || 'all'}
+                    onChange={(e) => this.setState({ fileTypeFilter: e.target.value })}
+                    className="file-type-select"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="DUN">📍 DUN (Levels)</option>
+                    <option value="CEL">🖼️ CEL (Sprites)</option>
+                    <option value="CL2">🎬 CL2 (Animations)</option>
+                    <option value="WAV">🔊 WAV (Audio)</option>
+                    <option value="PAL">🎨 PAL (Palettes)</option>
+                    <option value="SOL">🚧 SOL (Collision)</option>
+                    <option value="MIN">📍 MIN (Minimap)</option>
+                    <option value="TIL">🧱 TIL (Tiles)</option>
+                  </select>
                 </div>
 
                 {/* File List */}
                 <div className="file-browser-list">
-                  {Object.entries(this.getGroupedFiles()).map(([category, files]) => (
-                    <div key={category} className="file-group">
-                      <div className="file-group-header">{category} ({files.length})</div>
-                      {files.slice(0, 50).map(file => {
-                        const fileType = getFileType(file);
-                        const isModified = modifiedFiles.some(m => m.path === file);
-                        return (
-                          <div
-                            key={file}
-                            className={`file-item ${selectedFile === file ? 'selected' : ''}`}
-                            onClick={() => this.loadFile(file)}
-                          >
-                            <span className="file-icon" style={{ color: fileType.color }}>
-                              {fileType.icon}
-                            </span>
-                            <span className="file-name">{file.split('/').pop()}</span>
-                            <div className="file-badges">
-                              {isModified && <span className="badge modified">MOD</span>}
+                  {Object.entries(this.getGroupedFiles()).map(([category, files]) => {
+                    const isExpanded = this.state.expandedCategories.has(category);
+                    const displayLimit = isExpanded ? files.length : this.state.filesPerCategory;
+                    const displayedFiles = files.slice(0, displayLimit);
+                    const hasMore = files.length > displayLimit;
+
+                    return (
+                      <div key={category} className="file-group">
+                        <div
+                          className="file-group-header"
+                          onClick={() => this.toggleCategoryExpansion(category)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                          {category} ({files.length})
+                        </div>
+                        {displayedFiles.map(file => {
+                          const fileType = getFileType(file);
+                          const isModified = modifiedFiles.some(m => m.path === file);
+                          return (
+                            <div
+                              key={file}
+                              className={`file-item ${selectedFile === file ? 'selected' : ''}`}
+                              onClick={() => this.loadFile(file)}
+                              title={file}
+                            >
+                              <span className="file-icon" style={{ color: fileType.color }}>
+                                {fileType.icon}
+                              </span>
+                              <span className="file-name">{file.split('/').pop()}</span>
+                              <span className="file-ext">{fileType.ext}</span>
+                              <div className="file-badges">
+                                {isModified && <span className="badge modified">MOD</span>}
+                              </div>
                             </div>
+                          );
+                        })}
+                        {hasMore && (
+                          <div
+                            className="file-item-more"
+                            onClick={() => this.toggleCategoryExpansion(category)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            {isExpanded ? '▲ Show less' : `▼ Show all ${files.length} files`}
                           </div>
-                        );
-                      })}
-                      {files.length > 50 && (
-                        <div className="file-item-more">...and {files.length - 50} more</div>
-                      )}
-                    </div>
-                  ))}
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -1109,8 +1204,55 @@ export class ModEditor extends Component {
                   />
                 )}
 
+                {/* WAV Audio Preview */}
+                {viewMode === 'preview' && selectedFileType?.key === 'WAV' && selectedFileData && (
+                  <div className="audio-preview">
+                    <h4>🔊 Audio Preview</h4>
+                    <p>File: <strong>{selectedFile.split('/').pop()}</strong></p>
+                    <p>Size: <strong>{selectedFileData.byteLength?.toLocaleString() || 'N/A'} bytes</strong></p>
+                    <div className="audio-controls">
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => this.playAudio(selectedFileData)}
+                      >
+                        ▶ Play
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => this.stopAudio()}
+                      >
+                        ⏹ Stop
+                      </button>
+                    </div>
+                    {this.state.audioUrl && (
+                      <audio
+                        src={this.state.audioUrl}
+                        autoPlay
+                        controls
+                        onEnded={() => this.setState({ isPlaying: false })}
+                        style={{ marginTop: '10px', width: '100%' }}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* CEL/CL2 Sprite Info */}
+                {viewMode === 'preview' && ['CEL', 'CL2'].includes(selectedFileType?.key) && selectedFileData && (
+                  <div className="sprite-preview">
+                    <h4>{selectedFileType.icon} Sprite/Animation File</h4>
+                    <p>File: <strong>{selectedFile.split('/').pop()}</strong></p>
+                    <p>Type: <strong>{selectedFileType.name}</strong></p>
+                    <p>Size: <strong>{selectedFileData.byteLength?.toLocaleString() || 'N/A'} bytes</strong></p>
+                    <p className="hint">CEL/CL2 visual preview coming soon. Use Hex view to inspect raw data.</p>
+                    <div className="sprite-info">
+                      <p><strong>CEL</strong> = Static sprite frames</p>
+                      <p><strong>CL2</strong> = Animated sprite sequences</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Generic file preview (not yet supported) */}
-                {viewMode === 'preview' && !['DUN', 'PAL', 'SOL', 'MIN', 'TIL'].includes(selectedFileType?.key) && (
+                {viewMode === 'preview' && !['DUN', 'PAL', 'SOL', 'MIN', 'TIL', 'WAV', 'CEL', 'CL2'].includes(selectedFileType?.key) && (
                   <div className="generic-file-info">
                     <p>File type: <strong>{selectedFileType?.name}</strong></p>
                     <p>Size: <strong>{selectedFileData ? selectedFileData.byteLength?.toLocaleString() || 'N/A' : 'Loading...'} bytes</strong></p>
