@@ -5,7 +5,7 @@
  * OpenAI, Google Gemini, Anthropic, and local models.
  */
 
-import debugLogger, { LogCategory, LogLevel } from '../DebugLogger';
+import debugLogger, { LogCategory } from '../DebugLogger';
 
 // Track API call statistics
 let apiCallStats = {
@@ -15,12 +15,24 @@ let apiCallStats = {
   totalTokensIn: 0,
   totalTokensOut: 0,
   errors: 0,
+  retries: 0,
   estimatedCost: 0,
 };
 
-// Expose stats globally for debugging
+// Configuration for retry and timeout behavior
+const AI_CONFIG = {
+  defaultTimeout: 120000,    // 2 minutes default (was 30s)
+  maxRetries: 3,             // Retry up to 3 times
+  retryDelayBase: 2000,      // Start with 2 second delay
+  retryDelayMax: 30000,      // Max 30 second delay
+  verboseLogging: true,      // Log full prompts/responses
+};
+
+// Expose stats and config globally for debugging
 if (typeof window !== 'undefined') {
   window.getAIStats = () => ({ ...apiCallStats });
+  window.setAIVerbose = (v) => { AI_CONFIG.verboseLogging = v; };
+  window.AI_CONFIG = AI_CONFIG;
 }
 
 // Provider types
@@ -129,7 +141,73 @@ class BaseProvider {
     this.baseUrl = config.baseUrl || PROVIDER_CONFIGS[config.provider]?.baseUrl;
     this.model = config.model || PROVIDER_CONFIGS[config.provider]?.defaultModel;
     this.imageModel = config.imageModel || PROVIDER_CONFIGS[config.provider]?.defaultImageModel;
-    this.timeout = config.timeout || 30000;
+    this.timeout = config.timeout || AI_CONFIG.defaultTimeout;
+  }
+
+  /**
+   * Calculate dynamic timeout based on expected tokens
+   */
+  calculateTimeout(maxTokens = 2000) {
+    // Base timeout + extra time for token generation
+    // Claude generates ~50 tokens/sec, add buffer
+    const tokenTime = Math.ceil(maxTokens / 30) * 1000; // ~30 tokens/sec with buffer
+    return Math.max(this.timeout, 30000 + tokenTime);
+  }
+
+  /**
+   * Sleep helper for retry delays
+   */
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Retry wrapper with exponential backoff
+   */
+  async withRetry(operation, operationName, maxRetries = AI_CONFIG.maxRetries) {
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        apiCallStats.errors++;
+
+        const isRetryable = error.message.includes('timeout') ||
+                           error.message.includes('429') ||
+                           error.message.includes('503') ||
+                           error.message.includes('502') ||
+                           error.message.includes('Failed to fetch');
+
+        if (!isRetryable || attempt === maxRetries) {
+          debugLogger.error(LogCategory.AI_PROVIDER, `✗ ${operationName} failed after ${attempt} attempt(s)`, {
+            error: error.message,
+            attempt,
+            maxRetries,
+            willRetry: false,
+          });
+          throw error;
+        }
+
+        const delay = Math.min(
+          AI_CONFIG.retryDelayBase * Math.pow(2, attempt - 1),
+          AI_CONFIG.retryDelayMax
+        );
+
+        apiCallStats.retries++;
+        debugLogger.warn(LogCategory.AI_PROVIDER, `⚠️ ${operationName} failed, retrying in ${delay}ms...`, {
+          error: error.message,
+          attempt,
+          maxRetries,
+          nextDelay: delay,
+        });
+
+        await this.sleep(delay);
+      }
+    }
+
+    throw lastError;
   }
 
   /**
@@ -248,55 +326,120 @@ class OpenRouterProvider extends BaseProvider {
 
   async generateText(prompt, options = {}) {
     const model = options.model || this.model;
+    const maxTokens = options.maxTokens ?? 2000;
+    const dynamicTimeout = this.calculateTimeout(maxTokens);
     const startTime = Date.now();
     apiCallStats.totalCalls++;
     apiCallStats.textCalls++;
 
-    // Log the text generation request
-    debugLogger.info(LogCategory.AI_PROVIDER, `📝 Text Generation Request`, {
+    // Log the text generation request with full prompt if verbose
+    const logData = {
       provider: 'OpenRouter',
       model,
       promptLength: prompt.length,
-      promptPreview: prompt.substring(0, 200) + (prompt.length > 200 ? '...' : ''),
       temperature: options.temperature ?? 0.7,
-      maxTokens: options.maxTokens ?? 2000,
+      maxTokens,
+      timeout: dynamicTimeout,
       systemPromptLength: (options.systemPrompt || 'You are a helpful assistant.').length,
-    });
+    };
 
-    const response = await this.request(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-        'HTTP-Referer': window.location.href,
-        'X-Title': 'Diablo Web AI',
-      },
-      body: JSON.stringify({
+    if (AI_CONFIG.verboseLogging) {
+      logData.fullPrompt = prompt;
+      logData.systemPrompt = options.systemPrompt || 'You are a helpful assistant.';
+    } else {
+      logData.promptPreview = prompt.substring(0, 500) + (prompt.length > 500 ? '...' : '');
+    }
+
+    debugLogger.info(LogCategory.AI_PROVIDER, `📝 Text Generation Request`, logData);
+
+    // Store original timeout and use dynamic one
+    const originalTimeout = this.timeout;
+    this.timeout = dynamicTimeout;
+
+    try {
+      // Wrap request in retry logic
+      const response = await this.withRetry(async () => {
+        return await this.request(`${this.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.apiKey}`,
+            'HTTP-Referer': window.location.href,
+            'X-Title': 'Diablo Web AI',
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: options.systemPrompt || 'You are a helpful assistant.' },
+              { role: 'user', content: prompt },
+            ],
+            temperature: options.temperature ?? 0.7,
+            max_tokens: maxTokens,
+          }),
+        });
+      }, `Text Generation (${model})`);
+
+      const elapsed = Date.now() - startTime;
+      const content = response.choices[0].message.content;
+
+      // Log successful response with full content if verbose
+      const responseLog = {
+        provider: 'OpenRouter',
         model,
-        messages: [
-          { role: 'system', content: options.systemPrompt || 'You are a helpful assistant.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 2000,
-      }),
-    });
+        elapsed,
+        responseLength: content.length,
+        usage: response.usage || 'N/A',
+        finishReason: response.choices[0].finish_reason,
+      };
 
-    const elapsed = Date.now() - startTime;
-    const content = response.choices[0].message.content;
+      if (AI_CONFIG.verboseLogging) {
+        responseLog.fullResponse = content;
+      } else {
+        responseLog.responsePreview = content.substring(0, 500) + (content.length > 500 ? '...' : '');
+      }
 
-    // Log successful response
-    debugLogger.info(LogCategory.AI_PROVIDER, `✅ Text Generation Complete`, {
-      provider: 'OpenRouter',
-      model,
-      elapsed,
-      responseLength: content.length,
-      responsePreview: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
-      usage: response.usage || 'N/A',
-      finishReason: response.choices[0].finish_reason,
-    });
+      debugLogger.info(LogCategory.AI_PROVIDER, `✅ Text Generation Complete`, responseLog);
 
-    return content;
+      // Validate response if it's expected to be JSON
+      if (options.expectJSON !== false && (prompt.includes('JSON') || prompt.includes('json'))) {
+        this.validateJSONResponse(content, options.schema);
+      }
+
+      return content;
+    } finally {
+      this.timeout = originalTimeout;
+    }
+  }
+
+  /**
+   * Validate JSON response and log issues
+   */
+  validateJSONResponse(content, schema = null) {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      debugLogger.warn(LogCategory.AI_PROVIDER, `⚠️ Response Validation: No JSON found in response`, {
+        responseLength: content.length,
+        responseStart: content.substring(0, 200),
+      });
+      return false;
+    }
+
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      debugLogger.info(LogCategory.AI_PROVIDER, `✓ Response Validation: Valid JSON`, {
+        keys: Object.keys(parsed),
+        hasActs: Array.isArray(parsed.acts),
+        hasQuests: Array.isArray(parsed.quests),
+        hasLevels: parsed.acts?.[0]?.levels?.length || 0,
+      });
+      return true;
+    } catch (e) {
+      debugLogger.warn(LogCategory.AI_PROVIDER, `⚠️ Response Validation: Invalid JSON`, {
+        error: e.message,
+        jsonStart: jsonMatch[0].substring(0, 300),
+      });
+      return false;
+    }
   }
 
   async generateImage(prompt, options = {}) {
