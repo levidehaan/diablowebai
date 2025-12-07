@@ -31,6 +31,7 @@ export { default as campaignGenerator } from './CampaignGenerator';
 export { default as worldBuilder } from './WorldBuilder';
 export { default as GameStorage } from './GameStorage';
 export { default as WASMBridge } from './WASMBridge';
+export { default as levelInjector, LevelInjector, INJECTION_STATE } from './LevelInjector';
 export { default as TileMapper } from './TileMapper';
 export { default as MonsterMapper } from './MonsterMapper';
 export { default as DUNParser } from './DUNParser';
