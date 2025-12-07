@@ -61,6 +61,9 @@ process.env.NODE_PATH = (process.env.NODE_PATH || '')
 const REACT_APP = /^REACT_APP_/i;
 
 function getClientEnvironment(publicUrl) {
+  // Generate a cache version based on build timestamp for cache busting
+  const cacheVersion = process.env.CACHE_VERSION || Date.now().toString(36);
+
   const raw = Object.keys(process.env)
     .filter(key => REACT_APP.test(key))
     .reduce(
@@ -69,7 +72,7 @@ function getClientEnvironment(publicUrl) {
         return env;
       },
       {
-        // Useful for determining whether we’re running in production mode.
+        // Useful for determining whether we're running in production mode.
         // Most importantly, it switches React into the correct mode.
         NODE_ENV: process.env.NODE_ENV || 'development',
         // Useful for resolving the correct path to static assets in `public`.
@@ -78,6 +81,8 @@ function getClientEnvironment(publicUrl) {
         // images into the `src` and `import` them in code to get their paths.
         PUBLIC_URL: publicUrl,
         VERSION: process.env.npm_package_version,
+        // Cache busting version - unique per build
+        CACHE_VERSION: cacheVersion,
       }
     );
   // Stringify all values so we can feed into Webpack DefinePlugin
