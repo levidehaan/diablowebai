@@ -25,6 +25,8 @@ export const LogCategory = {
   QUEST: 'quest',
   EVENT: 'event',
   ERROR: 'error',
+  AI_PROVIDER: 'ai_provider',
+  PROGRESS: 'progress',
 };
 
 // Log levels
@@ -48,6 +50,8 @@ const CATEGORY_COLORS = {
   [LogCategory.QUEST]: '#607D8B',
   [LogCategory.EVENT]: '#009688',
   [LogCategory.ERROR]: '#F44336',
+  [LogCategory.AI_PROVIDER]: '#FFD700',  // Gold for AI calls - makes them stand out
+  [LogCategory.PROGRESS]: '#00E5FF',      // Cyan for progress updates
 };
 
 class DebugLogger {
@@ -528,6 +532,44 @@ if (typeof window !== 'undefined') {
   window.printDebugSummary = () => debugLogger.printSummary();
   window.downloadDebugLogs = () => debugLogger.downloadLogs();
 }
+
+// ============================================================================
+// STARTUP BANNER - Prints immediately when this module is loaded
+// ============================================================================
+(function printStartupBanner() {
+  const banner = `
+%c╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║   🎮 DIABLO WEB AI - DEBUG LOGGING SYSTEM ACTIVE                            ║
+║                                                                              ║
+║   Version: ${new Date().toISOString().split('T')[0]}                                                      ║
+║   Session: ${debugLogger.sessionId}                                                    ║
+║                                                                              ║
+║   Available Commands:                                                        ║
+║     window.printDebugSummary()  - Print pipeline summary                     ║
+║     window.downloadDebugLogs() - Download full debug log                     ║
+║     window.debugLogger         - Access logger directly                      ║
+║                                                                              ║
+║   Categories Tracked:                                                        ║
+║     CAMPAIGN | LEVEL_GEN | DUN | MPQ | GAME_LOAD                            ║
+║     WASM | DAPI | INJECTION | QUEST | EVENT | AI_PROVIDER                   ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+`;
+
+  console.log(banner, 'color: #4CAF50; font-weight: bold; font-size: 12px; font-family: monospace');
+
+  // Also log a simple confirmation
+  console.log('%c[DEBUG LOGGER] ✓ Initialized and ready to capture pipeline events',
+    'color: #4CAF50; font-weight: bold; padding: 4px 8px; background: #1a1a1a; border-radius: 4px');
+
+  // Verify we can log
+  debugLogger.info(LogCategory.EVENT, 'Debug logging system initialized', {
+    sessionId: debugLogger.sessionId,
+    categories: Object.keys(LogCategory),
+    startTime: new Date(debugLogger.startTime).toISOString(),
+  });
+})();
 
 export default debugLogger;
 export { DebugLogger };
