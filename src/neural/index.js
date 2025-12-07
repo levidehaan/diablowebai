@@ -32,6 +32,7 @@ export { default as worldBuilder } from './WorldBuilder';
 export { default as GameStorage } from './GameStorage';
 export { default as WASMBridge } from './WASMBridge';
 export { default as CustomAPIBridge } from './CustomAPIBridge';
+export { default as glassBoxMapper, GlassBoxMapper, DMAXX, DMAXY, MAXDUNX, MAXDUNY, MAXMONSTERS, MAXOBJECTS } from './GlassBoxMapper';
 export { default as levelInjector, LevelInjector, INJECTION_STATE } from './LevelInjector';
 export { default as TileMapper } from './TileMapper';
 export { default as MonsterMapper } from './MonsterMapper';

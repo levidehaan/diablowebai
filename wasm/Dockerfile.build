@@ -1,0 +1,62 @@
+# DevilutionX Custom WASM Build Container
+#
+# This Dockerfile builds a custom DevilutionX WASM binary with
+# the CustomAPI exports for Neural AI integration.
+#
+# Build: docker build -f Dockerfile.build -t devilution-wasm-builder .
+# Run:   docker run -v $(pwd)/../src/api:/output devilution-wasm-builder
+
+FROM emscripten/emsdk:3.1.47
+
+LABEL maintainer="DiabloWebAI Project"
+LABEL description="Build DevilutionX WASM with CustomAPI exports"
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    ninja-build \
+    python3 \
+    cmake \
+    git \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Clone DevilutionX source
+ARG DEVILUTION_REPO=https://github.com/AJenbo/devilutionX.git
+ARG DEVILUTION_BRANCH=master
+
+RUN git clone --depth 1 --branch ${DEVILUTION_BRANCH} ${DEVILUTION_REPO} devilutionX
+
+# Copy our CustomAPI patch files
+COPY patches/CustomAPI.cpp devilutionX/Source/
+COPY patches/CustomAPI.h devilutionX/Source/
+
+# Create the CMake patch to include CustomAPI
+RUN echo '\n\
+# CustomAPI for Neural AI integration\n\
+list(APPEND SRC_FILES Source/CustomAPI.cpp)\n\
+' >> devilutionX/CMakeLists.txt
+
+# Configure for Emscripten with CustomAPI exports
+WORKDIR /build/devilutionX
+
+RUN mkdir -p build && cd build && \
+    emcmake cmake .. \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_TESTING=OFF \
+        -DDEVILUTIONX_SYSTEM_BZIP2=OFF \
+        -DDEVILUTIONX_SYSTEM_LIBSODIUM=OFF \
+        -DDEVILUTIONX_SYSTEM_LIBFMT=OFF \
+        -DDEVILUTIONX_SYSTEM_SDL2=OFF \
+        -DCMAKE_EXE_LINKER_FLAGS="-s EXPORTED_FUNCTIONS='[_main,_malloc,_free,_DApi_Init,_DApi_Render,_DApi_Key,_DApi_Mouse,_DApi_Char,_DApi_AllocPacket,_DApi_SyncText,_DApi_SyncTextPtr,_DApi_OverrideStartLevel,_DApi_SuppressNPCs,_DApi_SetDungeonGeometry,_DApi_InjectMonster,_DApi_ClearMonsters,_DApi_GetMonsterCount,_DApi_InjectObject,_DApi_ClearObjects,_DApi_GetCurrentLevel,_DApi_GetPlayerPos,_DApi_SetPlayerPos,_DApi_PauseGameLogic,_DApi_GetDLevelPtr,_DApi_GetDMonsterPtr,_DApi_GetDObjectPtr,_DApi_GetPlayerPtr,_DApi_GetQuestFlag,_DApi_SetQuestFlag]' -s EXPORTED_RUNTIME_METHODS='[ccall,cwrap]'"
+
+# Build
+RUN cd build && ninja
+
+# Copy output to /output (will be mounted volume)
+CMD cp /build/devilutionX/build/devilutionx.wasm /output/Diablo.wasm 2>/dev/null || true && \
+    cp /build/devilutionX/build/devilutionx.js /output/Diablo.jscc 2>/dev/null || true && \
+    echo "Build artifacts copied to /output" && \
+    ls -la /output/

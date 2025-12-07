@@ -1,0 +1,20 @@
+# Docker Compose for building DevilutionX WASM with CustomAPI
+#
+# Usage:
+#   cd wasm
+#   docker-compose -f docker-compose.build.yml up --build
+#
+# Output will be in ../src/api/
+
+version: '3.8'
+
+services:
+  wasm-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+    volumes:
+      - ../src/api:/output
+    environment:
+      - DEVILUTION_REPO=https://github.com/AJenbo/devilutionX.git
+      - DEVILUTION_BRANCH=master

@@ -1,0 +1,456 @@
+/**
+ * WhiteBoxAPI - JavaScript wrapper for DevilutionX WASM exports
+ *
+ * This provides a clean interface to interact with the game engine
+ * through our custom EMSCRIPTEN_KEEPALIVE exports.
+ */
+
+export class WhiteBoxAPI {
+    constructor(wasmModule) {
+        this.module = wasmModule;
+        this._validateExports();
+    }
+
+    _validateExports() {
+        const requiredExports = [
+            'DApi_GetCurrentLevel',
+            'DApi_GetDungeonWidth',
+            'DApi_GetDungeonHeight'
+        ];
+
+        for (const exportName of requiredExports) {
+            if (!this.module[`_${exportName}`]) {
+                throw new Error(`Missing required WASM export: ${exportName}`);
+            }
+        }
+    }
+
+    _call(name, ...args) {
+        const fn = this.module[`_${name}`];
+        if (!fn) {
+            throw new Error(`WASM export not found: ${name}`);
+        }
+        return fn(...args);
+    }
+
+    // ========================================================================
+    // Game State Queries
+    // ========================================================================
+
+    getCurrentLevel() {
+        return this._call('DApi_GetCurrentLevel');
+    }
+
+    getLevelType() {
+        return this._call('DApi_GetLevelType');
+    }
+
+    getDungeonWidth() {
+        return this._call('DApi_GetDungeonWidth');
+    }
+
+    getDungeonHeight() {
+        return this._call('DApi_GetDungeonHeight');
+    }
+
+    getTileMapWidth() {
+        return this._call('DApi_GetTileMapWidth');
+    }
+
+    getTileMapHeight() {
+        return this._call('DApi_GetTileMapHeight');
+    }
+
+    // ========================================================================
+    // Dungeon Geometry Access
+    // ========================================================================
+
+    getDungeonTile(x, y) {
+        return this._call('DApi_GetDungeonTile', x, y);
+    }
+
+    setDungeonTile(x, y, value) {
+        this._call('DApi_SetDungeonTile', x, y, value);
+    }
+
+    getDMonster(x, y) {
+        return this._call('DApi_GetDMonster', x, y);
+    }
+
+    getDObject(x, y) {
+        return this._call('DApi_GetDObject', x, y);
+    }
+
+    /**
+     * Read the entire dungeon grid (40x40)
+     * @returns {Uint8Array} 1600-byte array of dungeon tiles
+     */
+    getDungeonGrid() {
+        const width = this.getDungeonWidth();
+        const height = this.getDungeonHeight();
+        const ptr = this._call('DApi_GetDungeonPtr');
+        return new Uint8Array(this.module.HEAPU8.buffer, ptr, width * height);
+    }
+
+    /**
+     * Read the tile-level monster map (112x112)
+     * @returns {Int16Array} Array of monster IDs per tile
+     */
+    getMonsterGrid() {
+        const width = this.getTileMapWidth();
+        const height = this.getTileMapHeight();
+        const ptr = this._call('DApi_GetDMonsterPtr');
+        return new Int16Array(this.module.HEAPU8.buffer, ptr, width * height);
+    }
+
+    /**
+     * Read the tile-level object map (112x112)
+     * @returns {Int8Array} Array of object IDs per tile
+     */
+    getObjectGrid() {
+        const width = this.getTileMapWidth();
+        const height = this.getTileMapHeight();
+        const ptr = this._call('DApi_GetDObjectPtr');
+        return new Int8Array(this.module.HEAPU8.buffer, ptr, width * height);
+    }
+
+    // ========================================================================
+    // Player State Access
+    // ========================================================================
+
+    getPlayerCount() {
+        return this._call('DApi_GetPlayerCount');
+    }
+
+    getMyPlayerIndex() {
+        return this._call('DApi_GetMyPlayerIndex');
+    }
+
+    getPlayerPosition(playerId = 0) {
+        return {
+            x: this._call('DApi_GetPlayerX', playerId),
+            y: this._call('DApi_GetPlayerY', playerId)
+        };
+    }
+
+    getPlayerHP(playerId = 0) {
+        return this._call('DApi_GetPlayerHP', playerId);
+    }
+
+    getPlayerMaxHP(playerId = 0) {
+        return this._call('DApi_GetPlayerMaxHP', playerId);
+    }
+
+    getPlayerMana(playerId = 0) {
+        return this._call('DApi_GetPlayerMana', playerId);
+    }
+
+    getPlayerMaxMana(playerId = 0) {
+        return this._call('DApi_GetPlayerMaxMana', playerId);
+    }
+
+    getPlayerLevel(playerId = 0) {
+        return this._call('DApi_GetPlayerLevel', playerId);
+    }
+
+    getPlayerGold(playerId = 0) {
+        return this._call('DApi_GetPlayerGold', playerId);
+    }
+
+    getPlayerClass(playerId = 0) {
+        return this._call('DApi_GetPlayerClass', playerId);
+    }
+
+    getPlayerName(playerId = 0) {
+        const ptr = this._call('DApi_GetPlayerName', playerId);
+        return this.module.UTF8ToString(ptr);
+    }
+
+    /**
+     * Get comprehensive player state
+     * @param {number} playerId - Player index (0-3)
+     * @returns {object} Player state object
+     */
+    getPlayerState(playerId = 0) {
+        return {
+            playerId,
+            position: this.getPlayerPosition(playerId),
+            hp: this.getPlayerHP(playerId),
+            maxHp: this.getPlayerMaxHP(playerId),
+            mana: this.getPlayerMana(playerId),
+            maxMana: this.getPlayerMaxMana(playerId),
+            level: this.getPlayerLevel(playerId),
+            gold: this.getPlayerGold(playerId),
+            class: this.getPlayerClass(playerId),
+            name: this.getPlayerName(playerId)
+        };
+    }
+
+    // ========================================================================
+    // Monster State Access
+    // ========================================================================
+
+    getActiveMonsterCount() {
+        return this._call('DApi_GetActiveMonsterCount');
+    }
+
+    getMaxMonsters() {
+        return this._call('DApi_GetMaxMonsters');
+    }
+
+    getMonsterPosition(monsterId) {
+        return {
+            x: this._call('DApi_GetMonsterX', monsterId),
+            y: this._call('DApi_GetMonsterY', monsterId)
+        };
+    }
+
+    getMonsterHP(monsterId) {
+        return this._call('DApi_GetMonsterHP', monsterId);
+    }
+
+    getMonsterMaxHP(monsterId) {
+        return this._call('DApi_GetMonsterMaxHP', monsterId);
+    }
+
+    getMonsterType(monsterId) {
+        return this._call('DApi_GetMonsterType', monsterId);
+    }
+
+    isMonsterActive(monsterId) {
+        return this._call('DApi_IsMonsterActive', monsterId) === 1;
+    }
+
+    /**
+     * Get comprehensive monster state
+     * @param {number} monsterId - Monster index
+     * @returns {object} Monster state object
+     */
+    getMonsterState(monsterId) {
+        return {
+            monsterId,
+            position: this.getMonsterPosition(monsterId),
+            hp: this.getMonsterHP(monsterId),
+            maxHp: this.getMonsterMaxHP(monsterId),
+            type: this.getMonsterType(monsterId),
+            active: this.isMonsterActive(monsterId)
+        };
+    }
+
+    /**
+     * Get all active monsters
+     * @returns {Array} Array of monster state objects
+     */
+    getAllActiveMonsters() {
+        const monsters = [];
+        const maxMonsters = this.getMaxMonsters();
+
+        for (let i = 0; i < maxMonsters; i++) {
+            if (this.isMonsterActive(i)) {
+                monsters.push(this.getMonsterState(i));
+            }
+        }
+
+        return monsters;
+    }
+
+    // ========================================================================
+    // Object State Access
+    // ========================================================================
+
+    getActiveObjectCount() {
+        return this._call('DApi_GetActiveObjectCount');
+    }
+
+    getObjectPosition(objectId) {
+        return {
+            x: this._call('DApi_GetObjectX', objectId),
+            y: this._call('DApi_GetObjectY', objectId)
+        };
+    }
+
+    getObjectType(objectId) {
+        return this._call('DApi_GetObjectType', objectId);
+    }
+
+    // ========================================================================
+    // Quest State Access
+    // ========================================================================
+
+    getQuestState(questId) {
+        return this._call('DApi_GetQuestState', questId);
+    }
+
+    getQuestLevel(questId) {
+        return this._call('DApi_GetQuestLevel', questId);
+    }
+
+    // ========================================================================
+    // Automap Access
+    // ========================================================================
+
+    isAutomapActive() {
+        return this._call('DApi_IsAutomapActive') === 1;
+    }
+
+    /**
+     * Get automap exploration data (40x40)
+     * @returns {Uint8Array} Exploration state per dungeon tile
+     */
+    getAutomapView() {
+        const width = this.getDungeonWidth();
+        const height = this.getDungeonHeight();
+        const ptr = this._call('DApi_GetAutomapViewPtr');
+        return new Uint8Array(this.module.HEAPU8.buffer, ptr, width * height);
+    }
+
+    // ========================================================================
+    // Game Control Functions
+    // ========================================================================
+
+    setPlayerPosition(playerId, x, y) {
+        this._call('DApi_SetPlayerPosition', playerId, x, y);
+    }
+
+    setMonsterPosition(monsterId, x, y) {
+        this._call('DApi_SetMonsterPosition', monsterId, x, y);
+    }
+
+    setMonsterHP(monsterId, hp) {
+        this._call('DApi_SetMonsterHP', monsterId, hp);
+    }
+
+    killMonster(monsterId) {
+        this._call('DApi_KillMonster', monsterId);
+    }
+
+    // ========================================================================
+    // Level Injection Support
+    // ========================================================================
+
+    /**
+     * Inject custom dungeon geometry
+     * @param {Uint8Array} data - Dungeon tile data (40x40 max)
+     * @param {number} width - Width of data
+     * @param {number} height - Height of data
+     */
+    setDungeonGeometry(data, width, height) {
+        // Allocate memory in WASM and copy data
+        const ptr = this.module._malloc(data.length);
+        this.module.HEAPU8.set(data, ptr);
+
+        this._call('DApi_SetDungeonGeometry', ptr, width, height);
+
+        // Free allocated memory
+        this.module._free(ptr);
+    }
+
+    clearDungeon() {
+        this._call('DApi_ClearDungeon');
+    }
+
+    clearMonsters() {
+        this._call('DApi_ClearMonsters');
+    }
+
+    clearObjects() {
+        this._call('DApi_ClearObjects');
+    }
+
+    // ========================================================================
+    // Memory Offsets (for debugging/Glass Box integration)
+    // ========================================================================
+
+    getMemoryOffsets() {
+        return {
+            dungeon: this._call('DApi_GetDungeonOffset'),
+            dMonster: this._call('DApi_GetDMonsterOffset'),
+            dObject: this._call('DApi_GetDObjectOffset'),
+            players: this._call('DApi_GetPlayersOffset'),
+            monsters: this._call('DApi_GetMonstersOffset')
+        };
+    }
+
+    // ========================================================================
+    // Utility Methods
+    // ========================================================================
+
+    /**
+     * Get complete game state snapshot
+     * @returns {object} Full game state
+     */
+    getGameState() {
+        const myPlayer = this.getMyPlayerIndex();
+
+        return {
+            level: {
+                current: this.getCurrentLevel(),
+                type: this.getLevelType(),
+                dungeonSize: {
+                    width: this.getDungeonWidth(),
+                    height: this.getDungeonHeight()
+                },
+                tileMapSize: {
+                    width: this.getTileMapWidth(),
+                    height: this.getTileMapHeight()
+                }
+            },
+            player: this.getPlayerState(myPlayer),
+            monsters: {
+                active: this.getActiveMonsterCount(),
+                max: this.getMaxMonsters()
+            },
+            objects: {
+                active: this.getActiveObjectCount()
+            },
+            automap: {
+                active: this.isAutomapActive()
+            }
+        };
+    }
+
+    /**
+     * Log game state to console for debugging
+     */
+    debugState() {
+        const state = this.getGameState();
+        console.log('=== DevilutionX Game State ===');
+        console.log('Level:', state.level.current, 'Type:', state.level.type);
+        console.log('Player:', state.player.name, 'at', state.player.position);
+        console.log('HP:', state.player.hp, '/', state.player.maxHp);
+        console.log('Monsters:', state.monsters.active, 'active of', state.monsters.max);
+        console.log('Objects:', state.objects.active, 'active');
+        return state;
+    }
+}
+
+// Level type constants (from gendung_defs.hpp)
+export const LevelType = {
+    TOWN: 0,
+    CATHEDRAL: 1,
+    CATACOMBS: 2,
+    CAVES: 3,
+    HELL: 4,
+    NEST: 5,
+    CRYPT: 6
+};
+
+// Player class constants
+export const PlayerClass = {
+    WARRIOR: 0,
+    ROGUE: 1,
+    SORCERER: 2,
+    MONK: 3,
+    BARD: 4,
+    BARBARIAN: 5
+};
+
+// Quest state constants
+export const QuestState = {
+    NOTAVAIL: 0,
+    INIT: 1,
+    ACTIVE: 2,
+    DONE: 3
+};
+
+export default WhiteBoxAPI;
