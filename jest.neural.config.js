@@ -10,6 +10,7 @@ module.exports = {
     '<rootDir>/tests/campaign.test.js',
     '<rootDir>/tests/toolSystem.test.js',
     '<rootDir>/tests/mpq-real-mocks.test.js',
+    '<rootDir>/tests/glassBoxMapper.test.js',
   ],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   transform: {

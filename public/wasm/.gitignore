@@ -1,0 +1,3 @@
+# Large WASM binaries - download or build separately
+*.wasm
+*.data
