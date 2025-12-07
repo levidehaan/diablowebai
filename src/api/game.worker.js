@@ -3,12 +3,11 @@ import DiabloModule from './Diablo.jscc';
 import SpawnBinary from './DiabloSpawn.wasm';
 import SpawnModule from './DiabloSpawn.jscc';
 import axios from 'axios';
+import websocket_open from './websocket';
+import { gameEventDetector, GameEventType } from '../neural/GameEventDetector';
 
 // Cache busting version - updated at build time
 const CACHE_VERSION = process.env.CACHE_VERSION || Date.now().toString(36);
-
-import websocket_open from './websocket';
-import { gameEventDetector, GameEventType } from '../neural/GameEventDetector';
 
 const DiabloSize = 1466809;
 const SpawnSize = 1337416;
