@@ -431,7 +431,7 @@ export class ModEditor extends Component {
         if (modifiedFile) {
           dunData = DUNParser.parse(modifiedFile.buffer);
         } else if (this.executor.mpqReader) {
-          const buffer = this.executor.mpqReader.readFile(path);
+          const buffer = this.executor.mpqReader.read(path);
           if (buffer) {
             dunData = DUNParser.parse(buffer);
           }

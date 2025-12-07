@@ -5897,10 +5897,25 @@ export class ModToolExecutor {
     const files = [];
     for (const [path, info] of this.modifiedFiles.entries()) {
       let buffer;
-      if (info.type === 'dun') {
-        buffer = DUNParser.write(info.data);
-      } else {
+
+      // Use pre-serialized buffer if available
+      if (info.buffer) {
+        buffer = info.buffer;
+      } else if (info.type === 'dun' && info.data) {
+        // Serialize DUN data to binary
+        try {
+          buffer = DUNParser.write(info.data);
+          console.log(`[ModToolExecutor] Serialized DUN: ${path} (${buffer.length} bytes)`);
+        } catch (err) {
+          console.error(`[ModToolExecutor] Failed to serialize DUN ${path}:`, err);
+          continue;
+        }
+      } else if (info.data) {
+        // Use data directly as buffer
         buffer = info.data;
+      } else {
+        console.warn(`[ModToolExecutor] No buffer or data for ${path}, skipping`);
+        continue;
       }
 
       files.push({
@@ -5910,6 +5925,7 @@ export class ModToolExecutor {
         isNew: info.isNew || false,
       });
     }
+    console.log(`[ModToolExecutor] getModifiedFiles returning ${files.length} files`);
     return files;
   }
 

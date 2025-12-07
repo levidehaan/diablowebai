@@ -125,7 +125,18 @@ export function decrypt(u32, key) {
   }
 }
 export function decrypt8(u8, key) {
-  decrypt(new Uint32Array(u8.buffer, u8.byteOffset, u8.length >> 2), key);
+  // Handle unaligned buffers by copying to an aligned buffer
+  if (u8.byteOffset % 4 !== 0) {
+    // Create aligned copy
+    const aligned = new Uint8Array(u8.length);
+    aligned.set(u8);
+    const u32 = new Uint32Array(aligned.buffer, 0, u8.length >> 2);
+    decrypt(u32, key);
+    // Copy back
+    u8.set(aligned);
+  } else {
+    decrypt(new Uint32Array(u8.buffer, u8.byteOffset, u8.length >> 2), key);
+  }
 }
 export function encrypt(u32, key) {
   let seed = 0xEEEEEEEE;
@@ -138,7 +149,18 @@ export function encrypt(u32, key) {
   }
 }
 export function encrypt8(u8, key) {
-  encrypt(new Uint32Array(u8.buffer, u8.byteOffset, u8.length >> 2), key);
+  // Handle unaligned buffers by copying to an aligned buffer
+  if (u8.byteOffset % 4 !== 0) {
+    // Create aligned copy
+    const aligned = new Uint8Array(u8.length);
+    aligned.set(u8);
+    const u32 = new Uint32Array(aligned.buffer, 0, u8.length >> 2);
+    encrypt(u32, key);
+    // Copy back
+    u8.set(aligned);
+  } else {
+    encrypt(new Uint32Array(u8.buffer, u8.byteOffset, u8.length >> 2), key);
+  }
 }
 export function hash(name, type) {
   let seed1 = 0x7FED7FED;
