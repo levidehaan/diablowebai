@@ -32,9 +32,12 @@
  * └─────────────────────────────────────────────────────────┘
  */
 
+import debugLogger, { LogCategory } from './DebugLogger';
+
 // Feature detection state
 let customAPIAvailable = null;
 let gameWorker = null;
+let availableExports = [];
 
 // Pending promises for async operations
 const pendingPromises = new Map();
@@ -68,8 +71,11 @@ const CUSTOM_API_EXPORTS = [
  * @returns {Promise<boolean>} True if custom API is available
  */
 export async function initCustomAPI(worker) {
+  debugLogger.info(LogCategory.DAPI, 'CustomAPI bridge initialization starting...');
+
   if (!worker) {
     console.error('[CustomAPI] No worker provided');
+    debugLogger.error(LogCategory.DAPI, 'No worker provided to CustomAPI');
     return false;
   }
 
@@ -82,21 +88,38 @@ export async function initCustomAPI(worker) {
   try {
     const result = await probeCustomAPI();
     customAPIAvailable = result.available;
+    availableExports = result.exports || [];
 
     if (customAPIAvailable) {
       console.log('[CustomAPI] White Box mode: Custom exports available!');
       console.log('[CustomAPI] Available exports:', result.exports);
+      debugLogger.info(LogCategory.DAPI, 'CustomAPI initialized in WHITE BOX mode', {
+        available: true,
+        exportCount: availableExports.length,
+        exports: availableExports,
+      });
     } else {
       console.log('[CustomAPI] Glass Box mode: Using memory scanning fallback');
+      debugLogger.warn(LogCategory.DAPI, 'CustomAPI NOT available - using GLASS BOX fallback', {
+        available: false,
+        reason: 'No custom exports found in WASM',
+      });
     }
 
     return customAPIAvailable;
   } catch (err) {
     console.warn('[CustomAPI] Probe failed:', err);
+    debugLogger.error(LogCategory.DAPI, 'CustomAPI probe FAILED', {
+      error: err.message,
+      stack: err.stack,
+    });
     customAPIAvailable = false;
     return false;
   }
 }
+
+// Export available exports for external access
+export { availableExports };
 
 /**
  * Check if CustomAPI exports are available in the WASM binary
@@ -144,18 +167,32 @@ function handleWorkerMessage(event) {
 function callCustomAPI(funcName, ...args) {
   return new Promise((resolve, reject) => {
     if (!customAPIAvailable) {
+      debugLogger.warn(LogCategory.DAPI, `DApi call ${funcName} rejected - CustomAPI not available`, { funcName, args });
       reject(new Error('CustomAPI not available - use fallback'));
       return;
     }
 
     const id = ++requestId;
+    const callStartTime = Date.now();
+
     pendingPromises.set(id, (result) => {
+      const duration = Date.now() - callStartTime;
       if (result.error) {
+        debugLogger.logDapiCall(funcName, args, result.error, false);
         reject(new Error(result.error));
       } else {
+        debugLogger.logDapiCall(funcName, args, result.value, true);
+        debugLogger.debug(LogCategory.DAPI, `DApi call complete: ${funcName} (${duration}ms)`, {
+          funcName,
+          args,
+          result: result.value,
+          duration,
+        });
         resolve(result.value);
       }
     });
+
+    debugLogger.debug(LogCategory.DAPI, `DApi call starting: ${funcName}`, { funcName, args, requestId: id });
 
     gameWorker.postMessage({
       action: 'custom_api_call',
@@ -168,6 +205,7 @@ function callCustomAPI(funcName, ...args) {
     setTimeout(() => {
       if (pendingPromises.has(id)) {
         pendingPromises.delete(id);
+        debugLogger.error(LogCategory.DAPI, `DApi call TIMEOUT: ${funcName}`, { funcName, args });
         reject(new Error(`CustomAPI call ${funcName} timed out`));
       }
     }, 5000);

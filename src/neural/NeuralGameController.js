@@ -38,6 +38,7 @@ import levelInjector, { INJECTION_STATE } from './LevelInjector';
 import { questTriggerSystem, QuestStatus, TriggerType } from './QuestTriggerSystem';
 import { gameEventEmitter, GameEventType } from './GameEventEmitter';
 import { gameEventDetector } from './GameEventDetector';
+import debugLogger, { LogCategory } from './DebugLogger';
 
 // Controller states
 export const ControllerState = {
@@ -116,29 +117,53 @@ class NeuralGameController {
   async initialize(wasmModule, worker) {
     if (this.state !== ControllerState.UNINITIALIZED) {
       console.warn('[NeuralGameController] Already initialized');
+      debugLogger.warn(LogCategory.WASM, 'NeuralGameController already initialized');
       return this.state === ControllerState.READY;
     }
 
     this.state = ControllerState.INITIALIZING;
     console.log('[NeuralGameController] Initializing...');
+    debugLogger.info(LogCategory.WASM, 'NeuralGameController initialization starting...');
 
     try {
       this.wasmModule = wasmModule;
       this.worker = worker;
 
+      // Discover WASM exports
+      if (wasmModule) {
+        const allExports = Object.keys(wasmModule).filter(k => k.startsWith('_'));
+        const dapiExports = allExports.filter(k => k.includes('DApi'));
+
+        debugLogger.logWasmInit(allExports);
+        debugLogger.logWasmExports(allExports);
+        debugLogger.info(LogCategory.WASM, `WASM module has ${allExports.length} exports, ${dapiExports.length} DApi functions`, {
+          totalExports: allExports.length,
+          dapiExports: dapiExports.length,
+          dapiList: dapiExports,
+        });
+      } else {
+        debugLogger.error(LogCategory.WASM, 'No WASM module provided!');
+      }
+
       // 1. Create WhiteBoxAPI instance
       this.whiteBoxAPI = this.createWhiteBoxAPI(wasmModule);
+      debugLogger.info(LogCategory.WASM, `WhiteBoxAPI created: ${this.whiteBoxAPI ? 'success' : 'failed'}`);
 
       // 2. Initialize CustomAPIBridge
       await initCustomAPI(worker);
       const hasCustomAPI = isCustomAPIAvailable();
       console.log(`[NeuralGameController] CustomAPI available: ${hasCustomAPI}`);
+      debugLogger.logDapiProbe(hasCustomAPI, hasCustomAPI ? CustomAPIBridge.availableExports || [] : []);
 
       // 3. Initialize LevelInjector
       await levelInjector.init(worker);
+      debugLogger.info(LogCategory.INJECTION, 'LevelInjector initialized', {
+        memoryDiscovered: levelInjector.memoryDiscovered,
+      });
 
       // 4. Initialize Quest system
       questTriggerSystem.initialize();
+      debugLogger.info(LogCategory.QUEST, 'Quest trigger system initialized');
 
       // 5. Wire up event handlers
       this.wireEventHandlers();
@@ -148,6 +173,11 @@ class NeuralGameController {
 
       this.state = ControllerState.READY;
       console.log('[NeuralGameController] Initialization complete');
+      debugLogger.info(LogCategory.WASM, 'NeuralGameController initialization COMPLETE', {
+        hasCustomAPI,
+        hasWhiteBoxAPI: !!this.whiteBoxAPI,
+        levelInjectorReady: levelInjector.initialized,
+      });
 
       this.emit('initialized', { hasCustomAPI });
       return true;
@@ -155,6 +185,10 @@ class NeuralGameController {
     } catch (err) {
       this.state = ControllerState.ERROR;
       console.error('[NeuralGameController] Initialization failed:', err);
+      debugLogger.error(LogCategory.WASM, 'NeuralGameController initialization FAILED', {
+        error: err.message,
+        stack: err.stack,
+      });
       this.emit('error', err);
       return false;
     }
