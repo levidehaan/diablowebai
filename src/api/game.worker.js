@@ -356,7 +356,24 @@ async function initWasm(spawn, progress) {
     responseType: 'arraybuffer',
     onDownloadProgress: progress,
   });
-  const result = await (spawn ? SpawnModule : DiabloModule)({wasmBinary: binary.data}).ready;
+
+  // Configure Emscripten module with locateFile for data files
+  const moduleConfig = {
+    wasmBinary: binary.data,
+    // Tell Emscripten where to find additional data files (devilutionx.data)
+    locateFile: (path) => {
+      if (path.endsWith('.data')) {
+        return `${process.env.PUBLIC_URL}/wasm/${path}`;
+      }
+      return path;
+    },
+    // Suppress data file loading errors if file not found (we use MPQ instead)
+    onRuntimeInitialized: () => {
+      console.log('[WASM] Neural-enabled DevilutionX runtime initialized');
+    }
+  };
+
+  const result = await (spawn ? SpawnModule : DiabloModule)(moduleConfig).ready;
   progress({loaded: 2000000});
   return result;
 }
