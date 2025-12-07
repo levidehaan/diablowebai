@@ -48,6 +48,7 @@ import {
 
 import { generateBSP, generateCave, generateDrunkardWalk, generateArena, generateForTheme } from './ProceduralGenerator';
 import TileMapper from './TileMapper';
+import levelInjector from './LevelInjector';
 import MonsterMapper from './MonsterMapper';
 import ObjectMapper from './ObjectMapper';
 import DUNParser from './DUNParser';
@@ -82,6 +83,7 @@ export class CampaignBuilder {
       validateOnBuild: options.validateOnBuild !== false,
       seed: options.seed || Date.now(),
       useProgressEmitter: options.useProgressEmitter !== false, // Enable progress tracking
+      queueForInjection: options.queueForInjection || false, // Auto-queue levels for runtime injection
       ...options,
     };
 
@@ -168,6 +170,19 @@ export class CampaignBuilder {
       console.log('[CampaignBuilder] Build complete!');
 
       const result = this.getResult();
+
+      // Queue levels for runtime injection if enabled
+      if (this.options.queueForInjection && result.levels.size > 0) {
+        console.log('[CampaignBuilder] Queueing levels for runtime injection...');
+        try {
+          const queuedCount = await this.queueLevelsForInjection(result.levels);
+          result.injectionQueued = queuedCount;
+          console.log(`[CampaignBuilder] Queued ${queuedCount} levels for injection`);
+        } catch (err) {
+          console.warn('[CampaignBuilder] Failed to queue for injection:', err.message);
+          result.injectionError = err.message;
+        }
+      }
 
       if (this.options.useProgressEmitter) {
         buildProgress.completeBuild(true, `Generated ${result.summary.levels} levels, ${result.summary.triggers} triggers`);
@@ -1279,6 +1294,100 @@ Return as JSON with structure:
     if (listeners) {
       listeners.forEach(cb => cb(data));
     }
+  }
+
+  // ============================================================================
+  // LEVEL INJECTION
+  // ============================================================================
+
+  /**
+   * Queue generated levels for runtime injection
+   * @param {Map} levels - Map of path → dunData
+   * @returns {number} Number of levels queued
+   */
+  async queueLevelsForInjection(levels) {
+    const injectionLevels = new Map();
+
+    for (const [path, dunData] of levels) {
+      const levelId = this.getLevelIdFromPath(path);
+      if (levelId !== null) {
+        // Convert DUN data to grid format
+        const grid = this.dunToGrid(dunData);
+        injectionLevels.set(levelId, {
+          grid,
+          source: path,
+          theme: this.getThemeFromPath(path),
+        });
+      }
+    }
+
+    if (injectionLevels.size > 0) {
+      return levelInjector.queueCampaign(injectionLevels);
+    }
+
+    return 0;
+  }
+
+  /**
+   * Convert DUN data to 40x40 game grid
+   */
+  dunToGrid(dunData) {
+    const grid = [];
+
+    for (let y = 0; y < 40; y++) {
+      grid[y] = [];
+      for (let x = 0; x < 40; x++) {
+        if (dunData.baseTiles && y < dunData.height && x < dunData.width) {
+          grid[y][x] = dunData.baseTiles[y][x];
+        } else if (dunData[y] && dunData[y][x] !== undefined) {
+          grid[y][x] = dunData[y][x];
+        } else {
+          grid[y][x] = 1; // Wall for out of bounds
+        }
+      }
+    }
+
+    return grid;
+  }
+
+  /**
+   * Get level ID from file path
+   */
+  getLevelIdFromPath(path) {
+    const lower = path.toLowerCase();
+
+    if (lower.includes('towndata')) return 0;
+    if (lower.includes('l1data')) {
+      const match = lower.match(/l1data.*?(\d+)/);
+      return match ? Math.min(parseInt(match[1]), 4) : 1;
+    }
+    if (lower.includes('l2data')) {
+      const match = lower.match(/l2data.*?(\d+)/);
+      return match ? 4 + Math.min(parseInt(match[1]), 4) : 5;
+    }
+    if (lower.includes('l3data')) {
+      const match = lower.match(/l3data.*?(\d+)/);
+      return match ? 8 + Math.min(parseInt(match[1]), 4) : 9;
+    }
+    if (lower.includes('l4data')) {
+      const match = lower.match(/l4data.*?(\d+)/);
+      return match ? 12 + Math.min(parseInt(match[1]), 4) : 13;
+    }
+
+    return null;
+  }
+
+  /**
+   * Get theme from file path
+   */
+  getThemeFromPath(path) {
+    const lower = path.toLowerCase();
+    if (lower.includes('towndata')) return 'town';
+    if (lower.includes('l1data')) return 'cathedral';
+    if (lower.includes('l2data')) return 'catacombs';
+    if (lower.includes('l3data')) return 'caves';
+    if (lower.includes('l4data')) return 'hell';
+    return 'cathedral';
   }
 
   // ============================================================================

@@ -58,6 +58,7 @@ import { macroProcessor, parseMacro, parseMultipleMacros, expandShorthand } from
 import { seedExpander, parseSeedNotation, toSeedNotation, GENERATION_TEMPLATES, DENSITY_LEVELS, THEME_MODIFIERS, DIFFICULTY_MODIFIERS } from './SeedExpander';
 import { simulator, LocalSimulator, SimulationCache } from './LocalSimulator';
 import { presetStorage, STORES as STORAGE_STORES } from './PresetStorage';
+import levelInjector, { INJECTION_STATE } from './LevelInjector';
 
 // Tool definitions for AI
 export const MOD_TOOLS = {
@@ -5680,7 +5681,326 @@ export const MOD_TOOLS = {
       }
     },
   },
+
+  // ============================================================================
+  // RUNTIME LEVEL INJECTION TOOLS
+  // ============================================================================
+
+  /**
+   * Initialize level injection system
+   */
+  initInjector: {
+    name: 'initInjector',
+    description: 'Initialize the runtime level injection system. Must be called before using injection tools.',
+    parameters: {},
+    execute: async (context) => {
+      const { gameWorker } = context;
+
+      if (!gameWorker) {
+        return {
+          success: false,
+          error: 'No game worker available. Game must be running.',
+        };
+      }
+
+      try {
+        const result = await levelInjector.init(gameWorker);
+        return {
+          success: result,
+          status: levelInjector.getStatus(),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Queue a level for injection when player enters it
+   */
+  queueLevelInjection: {
+    name: 'queueLevelInjection',
+    description: 'Queue a generated level to be injected when the player enters that level. The level will be swapped at runtime.',
+    parameters: {
+      levelId: {
+        type: 'number',
+        description: 'Level ID to inject (0=town, 1-4=cathedral, 5-8=catacombs, 9-12=caves, 13-16=hell)',
+        required: true,
+      },
+      sourcePath: {
+        type: 'string',
+        description: 'Path to the modified DUN file in modifiedFiles, or "generate" to use the level generator',
+        required: false,
+      },
+      generateOptions: {
+        type: 'object',
+        description: 'Options for level generation if sourcePath is "generate" (theme, width, height, etc.)',
+        required: false,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles, levelGenerator } = context;
+
+      try {
+        let levelData;
+
+        if (params.sourcePath && params.sourcePath !== 'generate') {
+          // Use existing modified file
+          if (!modifiedFiles.has(params.sourcePath)) {
+            return { success: false, error: `No modified file found: ${params.sourcePath}` };
+          }
+
+          const dunData = modifiedFiles.get(params.sourcePath).data;
+          levelData = {
+            grid: levelInjector.dunToGrid(dunData),
+            source: params.sourcePath,
+          };
+        } else {
+          // Generate new level
+          const opts = params.generateOptions || {};
+          const theme = opts.theme || getThemeForLevel(params.levelId);
+          const width = opts.width || 40;
+          const height = opts.height || 40;
+
+          const generated = generateForTheme(theme, width, height, {
+            roomCount: opts.roomCount || 8,
+            seed: opts.seed || Date.now(),
+          });
+
+          // Convert to tile IDs
+          const grid = [];
+          for (let y = 0; y < 40; y++) {
+            grid[y] = [];
+            for (let x = 0; x < 40; x++) {
+              if (y < generated.grid.length && x < generated.grid[0].length) {
+                const cell = generated.grid[y][x];
+                grid[y][x] = TileMapper.getTileId(theme, cell === 0 ? 'floor' : 'wall');
+              } else {
+                grid[y][x] = TileMapper.getTileId(theme, 'wall');
+              }
+            }
+          }
+
+          // Add stairs
+          if (generated.entrance) {
+            grid[generated.entrance.y][generated.entrance.x] = TileMapper.getTileId(theme, 'stairs_up');
+          }
+          if (generated.exit) {
+            grid[generated.exit.y][generated.exit.x] = TileMapper.getTileId(theme, 'stairs_down');
+          }
+
+          levelData = {
+            grid,
+            source: 'generated',
+            theme,
+          };
+        }
+
+        const queued = levelInjector.queueLevel(params.levelId, levelData);
+
+        return {
+          success: queued,
+          levelId: params.levelId,
+          source: levelData.source,
+          status: levelInjector.getStatus(),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Inject a level immediately (current level)
+   */
+  injectLevelNow: {
+    name: 'injectLevelNow',
+    description: 'Immediately inject a level into the current game session. Use this to swap the level the player is currently in.',
+    parameters: {
+      sourcePath: {
+        type: 'string',
+        description: 'Path to the modified DUN file to inject',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      const { modifiedFiles } = context;
+
+      if (!modifiedFiles.has(params.sourcePath)) {
+        return { success: false, error: `No modified file found: ${params.sourcePath}` };
+      }
+
+      try {
+        const dunData = modifiedFiles.get(params.sourcePath).data;
+        await levelInjector.injectDUN(dunData);
+
+        return {
+          success: true,
+          injected: params.sourcePath,
+          status: levelInjector.getStatus(),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Queue an entire campaign for injection
+   */
+  queueCampaign: {
+    name: 'queueCampaign',
+    description: 'Queue all levels from a built campaign for runtime injection. Levels will be swapped as the player progresses.',
+    parameters: {
+      campaignResult: {
+        type: 'object',
+        description: 'The result from CampaignBuilder.build()',
+        required: true,
+      },
+    },
+    execute: async (context, params) => {
+      const { campaignResult } = params;
+
+      if (!campaignResult || !campaignResult.levels) {
+        return { success: false, error: 'Invalid campaign result - no levels found' };
+      }
+
+      try {
+        // Convert campaign levels to injection format
+        const levels = new Map();
+
+        // campaignResult.levels is a Map of path → dunData
+        // We need to determine level IDs from paths
+        for (const [path, dunData] of campaignResult.levels) {
+          const levelId = getLevelIdFromPath(path);
+          if (levelId !== null) {
+            levels.set(levelId, {
+              grid: levelInjector.dunToGrid(dunData),
+              source: path,
+            });
+          }
+        }
+
+        const count = levelInjector.queueCampaign(levels);
+
+        return {
+          success: true,
+          queuedLevels: count,
+          levelIds: Array.from(levels.keys()),
+          status: levelInjector.getStatus(),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Read current level from game memory
+   */
+  readCurrentLevel: {
+    name: 'readCurrentLevel',
+    description: 'Read the current level grid from game memory. Useful for comparing before/after injection.',
+    parameters: {},
+    execute: async (context) => {
+      try {
+        const grid = await levelInjector.readCurrentLevel();
+
+        // Analyze the grid
+        let floors = 0, walls = 0, stairs = 0;
+        for (let y = 0; y < grid.length; y++) {
+          for (let x = 0; x < grid[y].length; x++) {
+            const tile = grid[y][x];
+            if (tile === 0 || (tile >= 13 && tile <= 15)) floors++;
+            else if (tile >= 1 && tile <= 12) walls++;
+            else if (tile === 36 || tile === 37) stairs++;
+          }
+        }
+
+        return {
+          success: true,
+          grid,
+          stats: { floors, walls, stairs, total: 40 * 40 },
+          status: levelInjector.getStatus(),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+  },
+
+  /**
+   * Get injection system status
+   */
+  getInjectionStatus: {
+    name: 'getInjectionStatus',
+    description: 'Get the current status of the level injection system, including pending levels and history.',
+    parameters: {},
+    execute: async (context) => {
+      return {
+        success: true,
+        ...levelInjector.getStatus(),
+      };
+    },
+  },
+
+  /**
+   * Clear pending level injections
+   */
+  clearPendingInjections: {
+    name: 'clearPendingInjections',
+    description: 'Clear all pending level injections.',
+    parameters: {},
+    execute: async (context) => {
+      const count = levelInjector.clearPending();
+      return {
+        success: true,
+        clearedCount: count,
+        status: levelInjector.getStatus(),
+      };
+    },
+  },
 };
+
+/**
+ * Helper: Get level ID from file path
+ */
+function getLevelIdFromPath(path) {
+  const lower = path.toLowerCase();
+
+  // Town sectors
+  if (lower.includes('towndata')) return 0;
+
+  // Cathedral (L1) - levels 1-4
+  if (lower.includes('l1data')) {
+    const match = lower.match(/l1data.*?(\d+)/);
+    if (match) return Math.min(parseInt(match[1]), 4);
+    return 1;
+  }
+
+  // Catacombs (L2) - levels 5-8
+  if (lower.includes('l2data')) {
+    const match = lower.match(/l2data.*?(\d+)/);
+    if (match) return 4 + Math.min(parseInt(match[1]), 4);
+    return 5;
+  }
+
+  // Caves (L3) - levels 9-12
+  if (lower.includes('l3data')) {
+    const match = lower.match(/l3data.*?(\d+)/);
+    if (match) return 8 + Math.min(parseInt(match[1]), 4);
+    return 9;
+  }
+
+  // Hell (L4) - levels 13-16
+  if (lower.includes('l4data')) {
+    const match = lower.match(/l4data.*?(\d+)/);
+    if (match) return 12 + Math.min(parseInt(match[1]), 4);
+    return 13;
+  }
+
+  return null;
+}
 
 /**
  * Find rooms (connected floor areas) in a DUN level
@@ -5777,6 +6097,7 @@ export class ModToolExecutor {
     this.levelGenerator = null;
     this.campaignBlueprint = null;
     this.assetGenerator = null; // NanoBanana integration
+    this.gameWorker = null; // Game worker for level injection
   }
 
   /**
@@ -5817,6 +6138,13 @@ export class ModToolExecutor {
   }
 
   /**
+   * Set game worker (for level injection)
+   */
+  setGameWorker(worker) {
+    this.gameWorker = worker;
+  }
+
+  /**
    * Get execution context
    */
   getContext() {
@@ -5827,6 +6155,7 @@ export class ModToolExecutor {
       levelGenerator: this.levelGenerator,
       campaignBlueprint: this.campaignBlueprint,
       assetGenerator: this.assetGenerator,
+      gameWorker: this.gameWorker,
     };
   }
 
