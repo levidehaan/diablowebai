@@ -7,6 +7,7 @@
 
 import React, { Component } from 'react';
 import { EventEmitter } from 'events';
+import debugLogger, { LogCategory } from './DebugLogger';
 
 /**
  * Build status constants
@@ -327,6 +328,31 @@ export class BuildProgressEmitter extends EventEmitter {
     // Keep only last 200 logs
     if (this.logs.length > 200) {
       this.logs = this.logs.slice(-200);
+    }
+
+    // Also log to DebugLogger for console output
+    const logData = { phase: this.currentPhase, elapsed: Date.now() - (this.startTime || Date.now()) };
+    switch (level) {
+      case 'error':
+        debugLogger.error(LogCategory.PROGRESS, `❌ ${message}`, logData);
+        break;
+      case 'warning':
+        debugLogger.warn(LogCategory.PROGRESS, `⚠️ ${message}`, logData);
+        break;
+      case 'success':
+        debugLogger.info(LogCategory.PROGRESS, `✅ ${message}`, logData);
+        break;
+      case 'phase':
+        debugLogger.info(LogCategory.PROGRESS, `📌 ${message}`, logData);
+        break;
+      case 'task':
+        debugLogger.debug(LogCategory.PROGRESS, `🔧 ${message}`, logData);
+        break;
+      case 'progress':
+        debugLogger.debug(LogCategory.PROGRESS, `→ ${message}`, logData);
+        break;
+      default:
+        debugLogger.info(LogCategory.PROGRESS, message, logData);
     }
 
     this.emit('log', entry);

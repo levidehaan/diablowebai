@@ -5,6 +5,24 @@
  * OpenAI, Google Gemini, Anthropic, and local models.
  */
 
+import debugLogger, { LogCategory, LogLevel } from '../DebugLogger';
+
+// Track API call statistics
+let apiCallStats = {
+  totalCalls: 0,
+  textCalls: 0,
+  imageCalls: 0,
+  totalTokensIn: 0,
+  totalTokensOut: 0,
+  errors: 0,
+  estimatedCost: 0,
+};
+
+// Expose stats globally for debugging
+if (typeof window !== 'undefined') {
+  window.getAIStats = () => ({ ...apiCallStats });
+}
+
 // Provider types
 export const PROVIDERS = {
   OPENROUTER: 'openrouter',
@@ -153,6 +171,15 @@ class BaseProvider {
   async request(url, options = {}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const startTime = Date.now();
+    const requestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 5)}`;
+
+    // Log the outgoing request
+    debugLogger.info(LogCategory.AI_PROVIDER, `→ API Request [${requestId}]`, {
+      url: url.replace(/key=[^&]+/, 'key=***').replace(/Bearer [^"]+/, 'Bearer ***'),
+      method: options.method || 'GET',
+      timeout: this.timeout,
+    });
 
     try {
       const response = await fetch(url, {
@@ -160,12 +187,50 @@ class BaseProvider {
         signal: controller.signal,
       });
 
+      const elapsed = Date.now() - startTime;
+
       if (!response.ok) {
         const error = await response.text();
+        apiCallStats.errors++;
+        debugLogger.error(LogCategory.AI_PROVIDER, `✗ API Error [${requestId}] ${response.status}`, {
+          elapsed,
+          status: response.status,
+          error: error.substring(0, 500),
+        });
         throw new Error(`API error ${response.status}: ${error}`);
       }
 
-      return response.json();
+      const data = await response.json();
+
+      // Extract usage info if available
+      const usage = data.usage || {};
+      if (usage.prompt_tokens) {
+        apiCallStats.totalTokensIn += usage.prompt_tokens;
+      }
+      if (usage.completion_tokens) {
+        apiCallStats.totalTokensOut += usage.completion_tokens;
+      }
+
+      debugLogger.info(LogCategory.AI_PROVIDER, `✓ API Response [${requestId}]`, {
+        elapsed,
+        status: response.status,
+        hasUsage: !!data.usage,
+        tokensIn: usage.prompt_tokens || 'N/A',
+        tokensOut: usage.completion_tokens || 'N/A',
+      });
+
+      return data;
+    } catch (error) {
+      const elapsed = Date.now() - startTime;
+      if (error.name === 'AbortError') {
+        apiCallStats.errors++;
+        debugLogger.error(LogCategory.AI_PROVIDER, `✗ API Timeout [${requestId}]`, {
+          elapsed,
+          timeout: this.timeout,
+        });
+        throw new Error(`Request timed out after ${this.timeout}ms`);
+      }
+      throw error;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -182,6 +247,22 @@ class OpenRouterProvider extends BaseProvider {
   }
 
   async generateText(prompt, options = {}) {
+    const model = options.model || this.model;
+    const startTime = Date.now();
+    apiCallStats.totalCalls++;
+    apiCallStats.textCalls++;
+
+    // Log the text generation request
+    debugLogger.info(LogCategory.AI_PROVIDER, `📝 Text Generation Request`, {
+      provider: 'OpenRouter',
+      model,
+      promptLength: prompt.length,
+      promptPreview: prompt.substring(0, 200) + (prompt.length > 200 ? '...' : ''),
+      temperature: options.temperature ?? 0.7,
+      maxTokens: options.maxTokens ?? 2000,
+      systemPromptLength: (options.systemPrompt || 'You are a helpful assistant.').length,
+    });
+
     const response = await this.request(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -191,7 +272,7 @@ class OpenRouterProvider extends BaseProvider {
         'X-Title': 'Diablo Web AI',
       },
       body: JSON.stringify({
-        model: options.model || this.model,
+        model,
         messages: [
           { role: 'system', content: options.systemPrompt || 'You are a helpful assistant.' },
           { role: 'user', content: prompt },
@@ -201,12 +282,38 @@ class OpenRouterProvider extends BaseProvider {
       }),
     });
 
-    return response.choices[0].message.content;
+    const elapsed = Date.now() - startTime;
+    const content = response.choices[0].message.content;
+
+    // Log successful response
+    debugLogger.info(LogCategory.AI_PROVIDER, `✅ Text Generation Complete`, {
+      provider: 'OpenRouter',
+      model,
+      elapsed,
+      responseLength: content.length,
+      responsePreview: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
+      usage: response.usage || 'N/A',
+      finishReason: response.choices[0].finish_reason,
+    });
+
+    return content;
   }
 
   async generateImage(prompt, options = {}) {
     // OpenRouter uses chat/completions with modalities for image generation
     const imageModel = options.model || this.imageModel;
+    const startTime = Date.now();
+    apiCallStats.totalCalls++;
+    apiCallStats.imageCalls++;
+
+    // Log the image generation request
+    debugLogger.info(LogCategory.AI_PROVIDER, `🖼️ Image Generation Request`, {
+      provider: 'OpenRouter',
+      model: imageModel,
+      promptLength: prompt.length,
+      promptPreview: prompt.substring(0, 300) + (prompt.length > 300 ? '...' : ''),
+      aspectRatio: options.aspectRatio || 'default',
+    });
 
     const requestBody = {
       model: imageModel,
@@ -232,16 +339,35 @@ class OpenRouterProvider extends BaseProvider {
       body: JSON.stringify(requestBody),
     });
 
+    const elapsed = Date.now() - startTime;
+
     // OpenRouter returns images in message.images array as base64 data URLs
     const message = response.choices[0].message;
     if (message.images && message.images.length > 0) {
       const imageUrl = message.images[0].image_url?.url || message.images[0];
+
+      debugLogger.info(LogCategory.AI_PROVIDER, `✅ Image Generation Complete`, {
+        provider: 'OpenRouter',
+        model: imageModel,
+        elapsed,
+        hasImage: true,
+        imageDataLength: typeof imageUrl === 'string' ? imageUrl.length : 0,
+        usage: response.usage || 'N/A',
+      });
+
       // Extract base64 from data URL if needed
       if (typeof imageUrl === 'string' && imageUrl.startsWith('data:')) {
         return imageUrl.split(',')[1]; // Return just the base64 part
       }
       return imageUrl;
     }
+
+    debugLogger.error(LogCategory.AI_PROVIDER, `✗ Image Generation Failed - No image in response`, {
+      provider: 'OpenRouter',
+      model: imageModel,
+      elapsed,
+      response: JSON.stringify(response).substring(0, 500),
+    });
 
     throw new Error('No image generated in response');
   }
@@ -515,6 +641,14 @@ class ProviderManager {
    * Initialize with configuration
    */
   async initialize(config) {
+    debugLogger.info(LogCategory.AI_PROVIDER, '🔧 Initializing AI Provider', {
+      provider: config.provider,
+      model: config.model,
+      imageModel: config.imageModel,
+      baseUrl: config.baseUrl,
+      hasApiKey: !!config.apiKey,
+    });
+
     this.config = config;
     this.provider = createProvider(config);
     this.cachedModels = null;
@@ -522,7 +656,14 @@ class ProviderManager {
     // Test connection
     const result = await this.provider.testConnection();
     if (!result.success) {
-      console.warn('[ProviderManager] Connection test failed:', result.error);
+      debugLogger.error(LogCategory.AI_PROVIDER, '✗ Provider connection test failed', {
+        provider: config.provider,
+        error: result.error,
+      });
+    } else {
+      debugLogger.info(LogCategory.AI_PROVIDER, '✓ Provider connection test passed', {
+        provider: config.provider,
+      });
     }
 
     return result;
