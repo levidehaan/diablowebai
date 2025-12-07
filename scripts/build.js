@@ -32,6 +32,9 @@ const measureFileSizesBeforeBuild =
 const printFileSizesAfterBuild = FileSizeReporter.printFileSizesAfterBuild;
 const useYarn = fs.existsSync(paths.yarnLockFile);
 
+// Cache busting for WASM files
+const { cacheBust } = require('./cache-bust');
+
 // These sizes are pretty large. We'll warn for bundles exceeding them.
 const WARN_AFTER_BUNDLE_GZIP_SIZE = 512 * 1024;
 const WARN_AFTER_CHUNK_GZIP_SIZE = 1024 * 1024;
@@ -65,7 +68,7 @@ checkBrowsers(paths.appPath, isInteractive)
     return build(previousFileSizes);
   })
   .then(
-    ({ stats, previousFileSizes, warnings }) => {
+    async ({ stats, previousFileSizes, warnings }) => {
       if (warnings.length) {
         console.log(chalk.yellow('Compiled with warnings.\n'));
         console.log(warnings.join('\n\n'));
@@ -81,6 +84,14 @@ checkBrowsers(paths.appPath, isInteractive)
         );
       } else {
         console.log(chalk.green('Compiled successfully.\n'));
+      }
+
+      // Run cache busting for WASM files
+      console.log(chalk.cyan('\nApplying cache busting to WASM assets...\n'));
+      try {
+        await cacheBust();
+      } catch (err) {
+        console.log(chalk.yellow('Warning: Cache busting failed:'), err.message);
       }
 
       console.log('File sizes after gzip:\n');

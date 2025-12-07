@@ -286,6 +286,139 @@ export class WhiteBoxAPI {
     }
 
     // ========================================================================
+    // Quest State Mutation (for AI campaign control)
+    // ========================================================================
+
+    /**
+     * Set quest state directly
+     * @param {number} questId - Quest ID (0-23)
+     * @param {number} state - 0=NOTAVAIL, 1=INIT, 2=ACTIVE, 3=DONE
+     */
+    setQuestState(questId, state) {
+        this._call('DApi_SetQuestState', questId, state);
+    }
+
+    /**
+     * Set whether quest appears in quest log
+     * @param {number} questId - Quest ID
+     * @param {boolean} show - Whether to show in log
+     */
+    setQuestLog(questId, show) {
+        this._call('DApi_SetQuestLog', questId, show ? 1 : 0);
+    }
+
+    /**
+     * Get whether quest is in quest log
+     * @param {number} questId - Quest ID
+     * @returns {boolean} True if in log
+     */
+    getQuestLog(questId) {
+        return this._call('DApi_GetQuestLog', questId) === 1;
+    }
+
+    /**
+     * Get quest variable 1
+     * @param {number} questId - Quest ID
+     * @returns {number} Variable value
+     */
+    getQuestVar1(questId) {
+        return this._call('DApi_GetQuestVar1', questId);
+    }
+
+    /**
+     * Set quest variable 1 (for tracking progress)
+     * @param {number} questId - Quest ID
+     * @param {number} value - Value to set
+     */
+    setQuestVar1(questId, value) {
+        this._call('DApi_SetQuestVar1', questId, value);
+    }
+
+    /**
+     * Get quest variable 2
+     * @param {number} questId - Quest ID
+     * @returns {number} Variable value
+     */
+    getQuestVar2(questId) {
+        return this._call('DApi_GetQuestVar2', questId);
+    }
+
+    /**
+     * Set quest variable 2 (for tracking progress)
+     * @param {number} questId - Quest ID
+     * @param {number} value - Value to set
+     */
+    setQuestVar2(questId, value) {
+        this._call('DApi_SetQuestVar2', questId, value);
+    }
+
+    /**
+     * Activate a quest and optionally set its level
+     * @param {number} questId - Quest ID
+     * @param {number} level - Level number (-1 to keep existing)
+     */
+    activateQuest(questId, level = -1) {
+        this._call('DApi_ActivateQuest', questId, level);
+    }
+
+    /**
+     * Mark a quest as completed
+     * @param {number} questId - Quest ID
+     */
+    completeQuest(questId) {
+        this._call('DApi_CompleteQuest', questId);
+    }
+
+    /**
+     * Set quest trigger position
+     * @param {number} questId - Quest ID
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     */
+    setQuestPosition(questId, x, y) {
+        this._call('DApi_SetQuestPosition', questId, x, y);
+    }
+
+    /**
+     * Get count of currently active quests
+     * @returns {number} Number of active quests
+     */
+    getActiveQuestCount() {
+        return this._call('DApi_GetActiveQuestCount');
+    }
+
+    /**
+     * Get comprehensive quest state
+     * @param {number} questId - Quest ID
+     * @returns {object} Quest state object
+     */
+    getQuestInfo(questId) {
+        return {
+            id: questId,
+            state: this.getQuestState(questId),
+            level: this.getQuestLevel(questId),
+            inLog: this.getQuestLog(questId),
+            var1: this.getQuestVar1(questId),
+            var2: this.getQuestVar2(questId),
+        };
+    }
+
+    /**
+     * Get all quest states
+     * @returns {Array} Array of quest info objects
+     */
+    getAllQuests() {
+        const quests = [];
+        for (let i = 0; i < 24; i++) {
+            const state = this.getQuestState(i);
+            if (state >= 0) {
+                quests.push(this.getQuestInfo(i));
+            }
+        }
+        return quests;
+    }
+
+    // ========================================================================
     // Automap Access
     // ========================================================================
 
@@ -355,6 +488,211 @@ export class WhiteBoxAPI {
 
     clearObjects() {
         this._call('DApi_ClearObjects');
+    }
+
+    // ========================================================================
+    // Monster/Object Injection
+    // ========================================================================
+
+    /**
+     * Inject a monster at runtime
+     * @param {number} monsterType - Monster type ID
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @param {number} hp - Hit points
+     * @param {boolean} isBoss - Whether this is a boss monster
+     * @returns {number} Monster slot ID, or -1 on failure
+     */
+    injectMonster(monsterType, x, y, hp, isBoss = false) {
+        return this._call('DApi_InjectMonster', monsterType, x, y, hp, isBoss ? 1 : 0);
+    }
+
+    /**
+     * Inject an object at runtime
+     * @param {number} objectType - Object type ID
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @returns {number} Object slot ID, or -1 on failure
+     */
+    injectObject(objectType, x, y) {
+        return this._call('DApi_InjectObject', objectType, x, y);
+    }
+
+    // ========================================================================
+    // Player Rewards
+    // ========================================================================
+
+    /**
+     * Give gold to a player
+     * @param {number} playerId - Player index
+     * @param {number} amount - Amount of gold
+     */
+    givePlayerGold(playerId, amount) {
+        this._call('DApi_GivePlayerGold', playerId, amount);
+    }
+
+    /**
+     * Give an item to a player
+     * @param {number} playerId - Player index
+     * @param {number} itemId - Item type ID
+     * @param {number} quality - Item quality
+     * @returns {number} Inventory slot, or -1 if no space
+     */
+    givePlayerItem(playerId, itemId, quality = 0) {
+        return this._call('DApi_GivePlayerItem', playerId, itemId, quality);
+    }
+
+    /**
+     * Give experience to a player
+     * @param {number} playerId - Player index
+     * @param {number} amount - Amount of experience
+     */
+    givePlayerExperience(playerId, amount) {
+        this._call('DApi_GivePlayerExperience', playerId, amount);
+    }
+
+    // ========================================================================
+    // Campaign/Level Override Support
+    // ========================================================================
+
+    /**
+     * Override the starting level for a new game
+     * @param {number} levelNum - Level number to start on
+     */
+    overrideStartLevel(levelNum) {
+        this._call('DApi_OverrideStartLevel', levelNum);
+    }
+
+    /**
+     * Get the current override start level
+     * @returns {number} Override level, or -1 if not set
+     */
+    getOverrideStartLevel() {
+        return this._call('DApi_GetOverrideStartLevel');
+    }
+
+    /**
+     * Clear the start level override
+     */
+    clearOverrideStartLevel() {
+        this._call('DApi_ClearOverrideStartLevel');
+    }
+
+    /**
+     * Set custom player spawn point
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     */
+    setPlayerSpawnPoint(x, y) {
+        this._call('DApi_SetPlayerSpawnPoint', x, y);
+    }
+
+    /**
+     * Get custom spawn X coordinate
+     * @returns {number} X coordinate, or -1 if not set
+     */
+    getSpawnX() {
+        return this._call('DApi_GetSpawnX');
+    }
+
+    /**
+     * Get custom spawn Y coordinate
+     * @returns {number} Y coordinate, or -1 if not set
+     */
+    getSpawnY() {
+        return this._call('DApi_GetSpawnY');
+    }
+
+    // ========================================================================
+    // NPC Suppression (for custom NPCs)
+    // ========================================================================
+
+    /**
+     * Suppress default NPC spawning
+     * @param {boolean} suppress - Whether to suppress NPCs
+     */
+    suppressNPCs(suppress) {
+        this._call('DApi_SuppressNPCs', suppress ? 1 : 0);
+    }
+
+    /**
+     * Check if NPCs are suppressed
+     * @returns {boolean} True if NPCs are suppressed
+     */
+    areNPCsSuppressed() {
+        return this._call('DApi_AreNPCsSuppressed') === 1;
+    }
+
+    /**
+     * Get the number of active towners
+     * @returns {number} Towner count
+     */
+    getTownerCount() {
+        return this._call('DApi_GetTownerCount');
+    }
+
+    /**
+     * Clear all towners from the town
+     */
+    clearTowners() {
+        this._call('DApi_ClearTowners');
+    }
+
+    // ========================================================================
+    // Game Logic Control
+    // ========================================================================
+
+    /**
+     * Pause or unpause game logic
+     * @param {boolean} pause - Whether to pause
+     */
+    pauseGameLogic(pause) {
+        this._call('DApi_PauseGameLogic', pause ? 1 : 0);
+    }
+
+    /**
+     * Check if game logic is paused
+     * @returns {boolean} True if paused
+     */
+    isGamePaused() {
+        return this._call('DApi_IsGamePaused') === 1;
+    }
+
+    /**
+     * Force a complete screen redraw
+     */
+    forceRedraw() {
+        this._call('DApi_ForceRedraw');
+    }
+
+    /**
+     * Get current game mode
+     * @returns {number} 1 if game running, 0 otherwise
+     */
+    getGameMode() {
+        return this._call('DApi_GetGameMode');
+    }
+
+    // ========================================================================
+    // Item Placement
+    // ========================================================================
+
+    /**
+     * Place an item on the ground
+     * @param {number} itemId - Item type ID
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @returns {number} Item slot, or -1 if no space
+     */
+    placeGroundItem(itemId, x, y) {
+        return this._call('DApi_PlaceGroundItem', itemId, x, y);
+    }
+
+    /**
+     * Clear all items from the ground
+     */
+    clearGroundItems() {
+        this._call('DApi_ClearGroundItems');
     }
 
     // ========================================================================

@@ -4,6 +4,9 @@ import SpawnBinary from './DiabloSpawn.wasm';
 import SpawnModule from './DiabloSpawn.jscc';
 import axios from 'axios';
 
+// Cache busting version - updated at build time
+const CACHE_VERSION = process.env.CACHE_VERSION || Date.now().toString(36);
+
 import websocket_open from './websocket';
 import { gameEventDetector, GameEventType } from '../neural/GameEventDetector';
 
@@ -361,9 +364,13 @@ async function initWasm(spawn, progress) {
   const moduleConfig = {
     wasmBinary: binary.data,
     // Tell Emscripten where to find additional data files (devilutionx.data)
+    // Add cache busting query param to ensure fresh downloads after deployments
     locateFile: (path) => {
       if (path.endsWith('.data')) {
-        return `${process.env.PUBLIC_URL}/wasm/${path}`;
+        return `${process.env.PUBLIC_URL}/wasm/${path}?v=${CACHE_VERSION}`;
+      }
+      if (path.endsWith('.wasm')) {
+        return `${process.env.PUBLIC_URL}/wasm/${path}?v=${CACHE_VERSION}`;
       }
       return path;
     },
