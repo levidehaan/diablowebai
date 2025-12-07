@@ -26,6 +26,7 @@ import {
 } from './AssetRegistry';
 import { CampaignBuilder, QuickCampaign } from './CampaignBuilder';
 import { BuildProgressPanel, buildProgress, BUILD_STATUS } from './CampaignBuildProgress';
+import { writeDUN } from './DUNParser';
 
 /**
  * Main Campaign Blueprint Panel
@@ -328,17 +329,30 @@ export class CampaignBlueprintPanel extends Component {
 
       // Add levels to executor's modified files
       if (this.props.executor && result.levels) {
+        console.log(`[CampaignBlueprintPanel] Adding ${result.levels.size} levels to modified files...`);
         for (const [path, dunData] of result.levels) {
-          this.props.executor.modifiedFiles.set(path, {
-            type: 'dun',
-            data: dunData,
-            modified: Date.now(),
-            isNew: true,
-          });
+          try {
+            // Serialize DUN data to binary buffer for MPQ storage
+            const buffer = writeDUN(dunData);
+            this.props.executor.modifiedFiles.set(path, {
+              type: 'dun',
+              data: dunData,
+              buffer: buffer,
+              modified: Date.now(),
+              isNew: true,
+            });
+            console.log(`[CampaignBlueprintPanel] Added level: ${path} (${buffer.length} bytes)`);
+          } catch (err) {
+            console.error(`[CampaignBlueprintPanel] Failed to serialize level ${path}:`, err);
+          }
         }
       }
 
-      console.log('[CampaignBlueprintPanel] Build complete:', result);
+      console.log('[CampaignBlueprintPanel] Build complete:', {
+        levels: result.levels?.size || 0,
+        triggers: result.triggers?.length || 0,
+        summary: result.summary,
+      });
     } catch (error) {
       console.error('[CampaignBlueprintPanel] Build failed:', error);
       this.setState({

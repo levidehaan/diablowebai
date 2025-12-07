@@ -106,9 +106,13 @@ export class CampaignBuilder {
    * Build a complete campaign from a blueprint
    */
   async build(blueprint) {
+    console.log('[CampaignBuilder] Starting build...');
     this.blueprint = blueprint instanceof CampaignBlueprint
       ? blueprint
       : new CampaignBlueprint(blueprint);
+
+    console.log(`[CampaignBuilder] Blueprint: ${this.blueprint.name || this.blueprint.id}`);
+    console.log(`[CampaignBuilder] Acts: ${this.blueprint.story?.acts?.length || 0}`);
 
     this.buildState = {
       phase: 'starting',
@@ -125,38 +129,48 @@ export class CampaignBuilder {
 
     try {
       // Phase 1: Story Generation (if needed)
+      console.log('[CampaignBuilder] Phase 1: Story Generation');
       await this.buildStory();
 
       // Phase 2: World Building
+      console.log('[CampaignBuilder] Phase 2: World Building');
       await this.buildWorld();
 
       // Phase 3: Starting Area Generation
+      console.log('[CampaignBuilder] Phase 3: Starting Area');
       await this.buildStartingArea();
 
       // Phase 4: Character Setup
+      console.log('[CampaignBuilder] Phase 4: Characters');
       await this.buildCharacters();
 
       // Phase 5: Quest System
+      console.log('[CampaignBuilder] Phase 5: Quests');
       await this.buildQuests();
 
       // Phase 6: Level Generation
+      console.log('[CampaignBuilder] Phase 6: Levels');
       await this.buildLevels();
+      console.log(`[CampaignBuilder] Generated ${this.generatedContent.levels.size} levels`);
 
       // Phase 7: Asset Resolution
+      console.log('[CampaignBuilder] Phase 7: Assets');
       await this.resolveAssets();
 
       // Phase 8: Validation
       if (this.options.validateOnBuild) {
+        console.log('[CampaignBuilder] Phase 8: Validation');
         await this.validateCampaign();
       }
 
       this.buildState.phase = 'complete';
       this.buildState.progress = 100;
+      console.log('[CampaignBuilder] Build complete!');
 
       const result = this.getResult();
 
       if (this.options.useProgressEmitter) {
-        buildProgress.completeBuild(true, `Generated ${result.levels.length} levels, ${result.triggers.length} triggers`);
+        buildProgress.completeBuild(true, `Generated ${result.summary.levels} levels, ${result.summary.triggers} triggers`);
       }
 
       this.emit('buildComplete', result);
@@ -1274,6 +1288,9 @@ Return as JSON with structure:
   getResult() {
     return {
       blueprint: this.blueprint,
+      // Keep levels as Map for consistency with rest of codebase
+      levels: this.generatedContent.levels,
+      triggers: this.generatedContent.triggers,
       generatedContent: {
         levels: Object.fromEntries(this.generatedContent.levels),
         triggers: this.generatedContent.triggers,
@@ -1281,6 +1298,8 @@ Return as JSON with structure:
         assets: Object.fromEntries(this.generatedContent.assets),
       },
       buildState: this.buildState,
+      warnings: this.buildState.warnings,
+      errors: this.buildState.errors,
       summary: {
         name: this.blueprint.name,
         acts: this.blueprint.story.acts.length,
