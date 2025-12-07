@@ -3,7 +3,7 @@
  *
  * This controller bridges the gap between AI campaign generation and
  * actual game execution. It wires together:
- * - WhiteBoxAPI (57 DApi exports for game state read/write)
+ * - WhiteBoxAPI (80 DApi exports for game state read/write)
  * - CustomAPIBridge (high-level operations like ghost town injection)
  * - LevelInjector (queued level replacement)
  * - QuestTriggerSystem (event detection → quest advancement)
@@ -503,15 +503,14 @@ class NeuralGameController {
    * Give gold to player
    */
   async giveGold(amount) {
-    // Try WhiteBoxAPI first, then CustomAPI
     if (this.whiteBoxAPI) {
       try {
         const playerId = this.whiteBoxAPI.getMyPlayerIndex();
         const currentGold = this.whiteBoxAPI.getPlayerGold(playerId);
-        // Note: WhiteBoxAPI doesn't have setPlayerGold, would need DApi export
-        console.log(`[NeuralGameController] Would give ${amount} gold (current: ${currentGold})`);
+        this.whiteBoxAPI.givePlayerGold(playerId, amount);
+        console.log(`[NeuralGameController] Gave ${amount} gold (was: ${currentGold}, now: ${currentGold + amount})`);
       } catch (e) {
-        console.warn('[NeuralGameController] Gold reward not supported:', e);
+        console.warn('[NeuralGameController] Gold reward failed:', e);
       }
     }
 
@@ -523,17 +522,49 @@ class NeuralGameController {
    * Give experience to player
    */
   async giveExperience(amount) {
-    console.log(`[NeuralGameController] Would give ${amount} experience`);
-    // Note: Would need DApi_GiveExperience export
+    if (this.whiteBoxAPI) {
+      try {
+        const playerId = this.whiteBoxAPI.getMyPlayerIndex();
+        this.whiteBoxAPI.givePlayerExperience(playerId, amount);
+        console.log(`[NeuralGameController] Gave ${amount} experience`);
+      } catch (e) {
+        console.warn('[NeuralGameController] Experience reward failed:', e);
+      }
+    }
+
     this.emit('experienceRewarded', { amount });
   }
 
   /**
-   * Give item to player
+   * Give item to player (in inventory or on ground)
    */
   async giveItem(item) {
-    console.log(`[NeuralGameController] Would give item:`, item);
-    // Note: Would need DApi_GiveItem export
+    const { itemId, quality = 0, position } = item;
+
+    if (this.whiteBoxAPI) {
+      try {
+        const playerId = this.whiteBoxAPI.getMyPlayerIndex();
+
+        // Try to add to inventory first
+        const slot = this.whiteBoxAPI.givePlayerItem(playerId, itemId, quality);
+
+        if (slot >= 0) {
+          console.log(`[NeuralGameController] Gave item ${itemId} to inventory slot ${slot}`);
+        } else if (position) {
+          // No inventory space, place on ground
+          const itemSlot = this.whiteBoxAPI.placeGroundItem(itemId, position.x, position.y);
+          console.log(`[NeuralGameController] Placed item ${itemId} on ground at (${position.x}, ${position.y})`);
+        } else {
+          // No inventory space and no position, place near player
+          const playerPos = this.whiteBoxAPI.getPlayerPosition(playerId);
+          const itemSlot = this.whiteBoxAPI.placeGroundItem(itemId, playerPos.x + 1, playerPos.y);
+          console.log(`[NeuralGameController] Placed item ${itemId} near player`);
+        }
+      } catch (e) {
+        console.warn('[NeuralGameController] Item reward failed:', e);
+      }
+    }
+
     this.emit('itemRewarded', { item });
   }
 
@@ -557,14 +588,19 @@ class NeuralGameController {
    * Spawn an NPC at location
    */
   async spawnNPC(npcData) {
-    const { x, y, typeId, hp = 999999 } = npcData;
+    const { x, y, typeId, hp = 999999, isBoss = false } = npcData;
 
     if (isCustomAPIAvailable()) {
       await injectMonster(x, y, typeId, hp, 0);
-      console.log(`[NeuralGameController] Spawned NPC at (${x}, ${y})`);
+      console.log(`[NeuralGameController] Spawned NPC via CustomAPI at (${x}, ${y})`);
     } else if (this.whiteBoxAPI) {
-      // Fallback using WhiteBoxAPI - but it doesn't have monster injection
-      console.warn('[NeuralGameController] NPC spawn not available without CustomAPI');
+      // Use WhiteBoxAPI.injectMonster
+      const slot = this.whiteBoxAPI.injectMonster(typeId, x, y, hp, isBoss);
+      if (slot >= 0) {
+        console.log(`[NeuralGameController] Spawned NPC via WhiteBoxAPI at (${x}, ${y}), slot ${slot}`);
+      } else {
+        console.warn('[NeuralGameController] NPC spawn failed - no available slots');
+      }
     }
 
     this.emit('npcSpawned', npcData);
