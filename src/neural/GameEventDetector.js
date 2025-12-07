@@ -154,10 +154,29 @@ export class GameEventDetector {
   discoverPointers() {
     if (!this.wasm) return;
 
-    // Look for exported symbols that might give us pointers
-    // This is build-dependent and may not work for all builds
+    // Check for new neural DApi exports first (preferred method)
+    const neuralExports = [
+      '_DApi_GetCurrentLevel',
+      '_DApi_GetPlayerHP',
+      '_DApi_GetMonsterHP',
+      '_DApi_GetActiveMonsterCount',
+    ];
 
-    // Common exported names in devilution builds
+    const hasNeuralApi = neuralExports.every(name => typeof this.wasm[name] === 'function');
+    if (hasNeuralApi) {
+      console.log('[GameEventDetector] Neural DApi exports detected - using direct API calls');
+      this.useNeuralApi = true;
+
+      // Count available neural exports
+      const allExports = Object.keys(this.wasm).filter(k => k.startsWith('_DApi_'));
+      console.log(`[GameEventDetector] Found ${allExports.length} DApi exports`);
+      return;
+    }
+
+    // Fallback: Look for legacy exported symbols that might give us pointers
+    // This is build-dependent and may not work for all builds
+    console.log('[GameEventDetector] No neural API found, trying legacy pointer discovery');
+
     const potentialExports = [
       '_plr',           // Player array
       '_monster',       // Monster array
@@ -201,11 +220,9 @@ export class GameEventDetector {
 
   /**
    * Extract current game state from WASM memory
+   * Uses the new DApi exports when available for accurate state reading
    */
   extractCurrentState() {
-    // For now, return a placeholder
-    // Full implementation requires discovered pointers
-
     const state = {
       playerHp: 0,
       playerMaxHp: 0,
@@ -218,8 +235,48 @@ export class GameEventDetector {
       monsterCount: 0,
     };
 
-    // If we have pointers, read actual values
-    // This will be expanded as we discover memory layout
+    // Use new DApi exports if available (neural-enabled WASM build)
+    if (this.wasm._DApi_GetCurrentLevel) {
+      try {
+        // Level info
+        state.currentLevel = this.wasm._DApi_GetCurrentLevel();
+
+        // Player info (player 0 = local player)
+        const playerId = this.wasm._DApi_GetMyPlayerIndex ? this.wasm._DApi_GetMyPlayerIndex() : 0;
+        state.playerHp = this.wasm._DApi_GetPlayerHP(playerId);
+        state.playerMaxHp = this.wasm._DApi_GetPlayerMaxHP(playerId);
+        state.playerLevel = this.wasm._DApi_GetPlayerLevel(playerId);
+        state.playerGold = this.wasm._DApi_GetPlayerGold(playerId);
+        state.playerX = this.wasm._DApi_GetPlayerX(playerId);
+        state.playerY = this.wasm._DApi_GetPlayerY(playerId);
+
+        // Monster info
+        state.monsterCount = this.wasm._DApi_GetActiveMonsterCount();
+        const maxMonsters = this.wasm._DApi_GetMaxMonsters ? this.wasm._DApi_GetMaxMonsters() : OFFSETS.MAX_MONSTERS;
+
+        for (let i = 0; i < maxMonsters; i++) {
+          if (this.wasm._DApi_IsMonsterActive(i)) {
+            const hp = this.wasm._DApi_GetMonsterHP(i);
+            const maxHp = this.wasm._DApi_GetMonsterMaxHP(i);
+            const type = this.wasm._DApi_GetMonsterType(i);
+            const x = this.wasm._DApi_GetMonsterX(i);
+            const y = this.wasm._DApi_GetMonsterY(i);
+
+            state.monsters.set(i, { hp, maxHp, type, x, y });
+          }
+        }
+
+        return state;
+      } catch (e) {
+        console.warn('[GameEventDetector] DApi read failed:', e);
+      }
+    }
+
+    // Fallback: If we have discovered pointers, read from memory directly
+    if (this.pointers.player && this.heap) {
+      // Legacy memory scanning fallback
+      // (kept for compatibility with older builds)
+    }
 
     return state;
   }
