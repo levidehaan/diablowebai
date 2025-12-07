@@ -832,6 +832,149 @@ worker.addEventListener("message", ({data}) => {
     handleNeuralInjectLevel(data.levelData);
     break;
 
+  // ============================================================
+  // CustomAPI Commands - White Box WASM integration
+  // These commands use the new exports from CustomAPI.cpp
+  // ============================================================
+
+  case "custom_api_probe":
+    handleCustomAPIProbe(data.requestId, data.exports);
+    break;
+
+  case "custom_api_call":
+    handleCustomAPICall(data.requestId, data.func, data.args);
+    break;
+
   default:
   }
 });
+
+// ============================================================
+// CustomAPI Handlers - for White Box WASM integration
+// ============================================================
+
+/**
+ * Probe for CustomAPI export availability
+ */
+function handleCustomAPIProbe(requestId, exports) {
+  if (!wasm) {
+    worker.postMessage({
+      action: 'custom_api_probe_result',
+      requestId,
+      available: false,
+      exports: [],
+    });
+    return;
+  }
+
+  // Check which exports are available
+  const available = [];
+  for (const name of exports) {
+    const funcName = `_${name}`;
+    if (typeof wasm[funcName] === 'function') {
+      available.push(name);
+    }
+  }
+
+  const hasCustomAPI = available.length > 5; // Need at least a few exports
+
+  console.log('[Worker] CustomAPI probe:', available.length, 'exports found');
+
+  worker.postMessage({
+    action: 'custom_api_probe_result',
+    requestId,
+    available: hasCustomAPI,
+    exports: available,
+  });
+}
+
+/**
+ * Call a CustomAPI function
+ */
+function handleCustomAPICall(requestId, funcName, args) {
+  if (!wasm) {
+    worker.postMessage({
+      action: 'custom_api_call_result',
+      requestId,
+      error: 'WASM not initialized',
+    });
+    return;
+  }
+
+  const wasmFuncName = `_${funcName}`;
+
+  if (typeof wasm[wasmFuncName] !== 'function') {
+    worker.postMessage({
+      action: 'custom_api_call_result',
+      requestId,
+      error: `Function ${funcName} not available`,
+    });
+    return;
+  }
+
+  try {
+    // Handle special cases that need memory allocation
+    let result;
+
+    switch (funcName) {
+      case 'DApi_SetDungeonGeometry':
+        // Args: [Uint8Array grid, width, height]
+        if (args[0] instanceof Uint8Array || Array.isArray(args[0])) {
+          const grid = args[0];
+          const width = args[1] || 40;
+          const height = args[2] || 40;
+
+          // Allocate memory for the grid
+          const ptr = wasm._malloc(width * height);
+          if (!ptr) {
+            throw new Error('Failed to allocate memory for grid');
+          }
+
+          // Copy grid data
+          const gridArray = grid instanceof Uint8Array ? grid : new Uint8Array(grid);
+          wasm.HEAPU8.set(gridArray, ptr);
+
+          // Call the function
+          result = wasm[wasmFuncName](ptr, width, height);
+
+          // Free the allocated memory
+          wasm._free(ptr);
+        } else {
+          result = wasm[wasmFuncName](...args);
+        }
+        break;
+
+      case 'DApi_GetPlayerPos':
+        // This returns two values via pointers
+        const xPtr = wasm._malloc(4);
+        const yPtr = wasm._malloc(4);
+        wasm[wasmFuncName](xPtr, yPtr);
+        result = {
+          x: wasm.HEAP32[xPtr >> 2],
+          y: wasm.HEAP32[yPtr >> 2],
+        };
+        wasm._free(xPtr);
+        wasm._free(yPtr);
+        break;
+
+      default:
+        // Standard call
+        result = wasm[wasmFuncName](...(args || []));
+        break;
+    }
+
+    worker.postMessage({
+      action: 'custom_api_call_result',
+      requestId,
+      value: result,
+    });
+
+  } catch (err) {
+    console.error('[Worker] CustomAPI call error:', funcName, err);
+    worker.postMessage({
+      action: 'custom_api_call_result',
+      requestId,
+      error: err.message || String(err),
+    });
+  }
+}
