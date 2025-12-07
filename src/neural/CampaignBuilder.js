@@ -1424,6 +1424,120 @@ Return as JSON with structure:
   }
 
   /**
+   * Export campaign in format ready for NeuralGameController
+   * This converts DUN data to 40x40 grids and structures quests for runtime
+   */
+  toPlayableFormat() {
+    const campaign = {
+      id: this.blueprint?.id || `campaign_${Date.now()}`,
+      name: this.blueprint?.name || 'Generated Campaign',
+      version: 1,
+
+      // Starting area configuration
+      startingArea: null,
+      startLevel: 0,
+      playerSpawn: { x: 25, y: 29 },
+
+      // Levels by ID (0=town, 1-16=dungeons)
+      levels: {},
+
+      // Quests in runtime format
+      quests: [],
+      initialQuests: [],
+
+      // Boss unlock configuration
+      bossUnlocks: {},
+    };
+
+    // Convert levels to playable format
+    for (const [path, dunData] of this.generatedContent.levels) {
+      const levelId = this.getLevelIdFromPath(path);
+      const grid = this.dunToGrid(dunData);
+      const theme = this.getThemeFromPath(path);
+
+      const levelData = {
+        grid,
+        source: path,
+        theme,
+        monsters: dunData.monsters || [],
+        objects: dunData.objects || [],
+      };
+
+      // Level 0 is the starting area (town)
+      if (levelId === 0) {
+        campaign.startingArea = levelData;
+        if (dunData.playerSpawn) {
+          campaign.playerSpawn = dunData.playerSpawn;
+        }
+      }
+
+      campaign.levels[levelId] = levelData;
+    }
+
+    // Convert quests to runtime format
+    if (this.blueprint?.quests) {
+      for (const quest of this.blueprint.quests.getAll()) {
+        const runtimeQuest = {
+          id: quest.id,
+          name: quest.name,
+          description: quest.description,
+          stages: [],
+          rewards: quest.rewards || {},
+        };
+
+        // Convert objectives to stages with triggers
+        for (const objective of quest.objectives || []) {
+          runtimeQuest.stages.push({
+            description: objective.description,
+            trigger: this.objectiveToTrigger(objective),
+          });
+        }
+
+        campaign.quests.push(runtimeQuest);
+
+        // Mark as initial quest if it should auto-start
+        if (quest.autoStart || quest.status === 'active') {
+          campaign.initialQuests.push(quest.id);
+        }
+      }
+    }
+
+    // Configure boss unlocks based on blueprint
+    campaign.bossUnlocks = {
+      101: { name: 'Skeleton King', rewards: { unlockArea: 5 } },
+      102: { name: 'Butcher', rewards: { gold: 500 } },
+      107: { name: 'Diablo', rewards: { dialogue: { type: 'victory' } } },
+    };
+
+    return campaign;
+  }
+
+  /**
+   * Convert objective to trigger format
+   */
+  objectiveToTrigger(objective) {
+    switch (objective.type) {
+      case 'kill':
+        if (objective.target?.isBoss) {
+          return { type: 'boss_killed', bossType: objective.target.typeId };
+        }
+        return { type: 'kill_count', count: objective.count || 1 };
+
+      case 'explore':
+        return { type: 'level_entered', level: objective.levelId || 1 };
+
+      case 'clear':
+        return { type: 'level_cleared', level: objective.levelId || 1 };
+
+      case 'collect':
+        return { type: 'gold_gained', threshold: objective.amount || 100 };
+
+      default:
+        return { type: 'monster_killed' }; // Generic fallback
+    }
+  }
+
+  /**
    * Export campaign to files for MPQ packaging
    */
   exportToFiles() {

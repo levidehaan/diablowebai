@@ -3,6 +3,10 @@ import init_sound from './sound';
 import load_spawn from './load_spawn';
 import webrtc_open from './webrtc';
 import { gameEventEmitter } from '../neural/GameEventEmitter';
+import neuralGameController from '../neural/NeuralGameController';
+
+// Track the game worker for neural integration
+let gameWorker = null;
 
 function onRender(api, ctx, {bitmap, images, text, clip, belt}) {
   if (bitmap) {
@@ -79,6 +83,19 @@ async function do_load_game(api, audio, mpq, spawn, options = {}) {
         switch (data.action) {
         case "loaded":
           console.log('[Loader] Game loaded signal received from worker');
+
+          // Store worker reference for neural integration
+          gameWorker = worker;
+
+          // Initialize NeuralGameController with the worker
+          // Note: WASM module is not directly accessible here, controller will
+          // work through worker messages
+          neuralGameController.initialize(null, worker).then(() => {
+            console.log('[Loader] NeuralGameController initialized');
+          }).catch(err => {
+            console.warn('[Loader] NeuralGameController init failed:', err);
+          });
+
           resolve((func, ...params) => worker.postMessage({action: "event", func, params}));
           break;
         case "render":
@@ -170,4 +187,36 @@ async function do_load_game(api, audio, mpq, spawn, options = {}) {
 export default function load_game(api, mpq, spawn, options = {}) {
   const audio = init_sound();
   return do_load_game(api, audio, mpq, spawn, options);
+}
+
+/**
+ * Get the current game worker instance
+ * @returns {Worker|null} The game worker if initialized
+ */
+export function getGameWorker() {
+  return gameWorker;
+}
+
+/**
+ * Trigger game start for neural systems
+ * Call this after character selection when entering the game world
+ */
+export async function triggerNeuralGameStart() {
+  if (neuralGameController) {
+    await neuralGameController.onGameStart();
+    console.log('[Loader] Neural game start triggered');
+  }
+}
+
+/**
+ * Load a campaign into the neural game controller
+ * @param {Object} campaign - Campaign data from CampaignBuilder
+ */
+export async function loadCampaignForPlay(campaign) {
+  if (neuralGameController) {
+    await neuralGameController.loadCampaign(campaign);
+    console.log('[Loader] Campaign loaded for play');
+    return true;
+  }
+  return false;
 }

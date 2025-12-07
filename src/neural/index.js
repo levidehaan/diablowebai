@@ -18,6 +18,7 @@ import GameStorage from './GameStorage';
 import { providerManager, PROVIDERS, PROVIDER_CONFIGS, createProvider } from './providers';
 import { questTriggerSystem } from './QuestTriggerSystem';
 import { gameEventEmitter } from './GameEventEmitter';
+import neuralGameController from './NeuralGameController';
 
 // Re-export individual modules
 export { default as NeuralConfig } from './config';
@@ -35,6 +36,7 @@ export { default as CustomAPIBridge } from './CustomAPIBridge';
 export { default as WhiteBoxAPI, LevelType, PlayerClass, QuestState } from './WhiteBoxAPI';
 export { default as glassBoxMapper, GlassBoxMapper, DMAXX, DMAXY, MAXDUNX, MAXDUNY, MAXMONSTERS, MAXOBJECTS } from './GlassBoxMapper';
 export { default as levelInjector, LevelInjector, INJECTION_STATE } from './LevelInjector';
+export { default as neuralGameController, NeuralGameController, ControllerState, RewardType as GameRewardType } from './NeuralGameController';
 export { default as TileMapper } from './TileMapper';
 export { default as MonsterMapper } from './MonsterMapper';
 export { default as DUNParser } from './DUNParser';
@@ -327,6 +329,9 @@ class NeuralAugmentation {
 
   /**
    * Initialize the Neural Augmentation system
+   * @param {Object} wasmModule - The loaded WASM module
+   * @param {Object} options - Initialization options
+   * @param {Worker} options.worker - The game worker instance (required for game controller)
    */
   async initialize(wasmModule, options = {}) {
     if (this.status === NeuralStatus.READY) {
@@ -344,6 +349,7 @@ class NeuralAugmentation {
 
     try {
       this.wasmModule = wasmModule;
+      this.worker = options.worker;
 
       // Initialize core interop layer
       neuralInterop.initialize(wasmModule);
@@ -355,6 +361,12 @@ class NeuralAugmentation {
 
       // Initialize game event system (for quest triggers)
       questTriggerSystem.initialize();
+
+      // Initialize the unified game controller (if worker provided)
+      if (options.worker) {
+        await neuralGameController.initialize(wasmModule, options.worker);
+        console.log('[Neural] Game controller initialized');
+      }
 
       // Setup cross-module event handlers
       this.setupEventHandlers();
@@ -490,6 +502,54 @@ class NeuralAugmentation {
    */
   getCampaignProgress() {
     return campaignGenerator.getProgress();
+  }
+
+  /**
+   * Load a campaign into the game controller for injection
+   * This bridges the gap between campaign generation and actual game execution
+   * @param {Object} campaign - Campaign data (from CampaignBuilder or loaded)
+   */
+  async loadCampaignForPlay(campaign) {
+    if (!campaign) {
+      throw new Error('No campaign provided');
+    }
+
+    // Load into the game controller
+    await neuralGameController.loadCampaign(campaign);
+
+    console.log('[Neural] Campaign loaded for play:', campaign.name || campaign.id);
+    return true;
+  }
+
+  /**
+   * Trigger game start - injects custom town and activates campaign
+   * Call this after character selection, when the game actually starts
+   */
+  async triggerGameStart() {
+    await neuralGameController.onGameStart();
+    console.log('[Neural] Game start triggered');
+  }
+
+  /**
+   * Get the game controller instance
+   * @returns {NeuralGameController}
+   */
+  getGameController() {
+    return neuralGameController;
+  }
+
+  /**
+   * Get current game state from WASM via WhiteBoxAPI
+   */
+  getGameState() {
+    return neuralGameController.getGameState();
+  }
+
+  /**
+   * Get player state
+   */
+  getPlayerState() {
+    return neuralGameController.getPlayerState();
   }
 
   /**
