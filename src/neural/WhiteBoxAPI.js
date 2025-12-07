@@ -286,6 +286,139 @@ export class WhiteBoxAPI {
     }
 
     // ========================================================================
+    // Quest State Mutation (for AI campaign control)
+    // ========================================================================
+
+    /**
+     * Set quest state directly
+     * @param {number} questId - Quest ID (0-23)
+     * @param {number} state - 0=NOTAVAIL, 1=INIT, 2=ACTIVE, 3=DONE
+     */
+    setQuestState(questId, state) {
+        this._call('DApi_SetQuestState', questId, state);
+    }
+
+    /**
+     * Set whether quest appears in quest log
+     * @param {number} questId - Quest ID
+     * @param {boolean} show - Whether to show in log
+     */
+    setQuestLog(questId, show) {
+        this._call('DApi_SetQuestLog', questId, show ? 1 : 0);
+    }
+
+    /**
+     * Get whether quest is in quest log
+     * @param {number} questId - Quest ID
+     * @returns {boolean} True if in log
+     */
+    getQuestLog(questId) {
+        return this._call('DApi_GetQuestLog', questId) === 1;
+    }
+
+    /**
+     * Get quest variable 1
+     * @param {number} questId - Quest ID
+     * @returns {number} Variable value
+     */
+    getQuestVar1(questId) {
+        return this._call('DApi_GetQuestVar1', questId);
+    }
+
+    /**
+     * Set quest variable 1 (for tracking progress)
+     * @param {number} questId - Quest ID
+     * @param {number} value - Value to set
+     */
+    setQuestVar1(questId, value) {
+        this._call('DApi_SetQuestVar1', questId, value);
+    }
+
+    /**
+     * Get quest variable 2
+     * @param {number} questId - Quest ID
+     * @returns {number} Variable value
+     */
+    getQuestVar2(questId) {
+        return this._call('DApi_GetQuestVar2', questId);
+    }
+
+    /**
+     * Set quest variable 2 (for tracking progress)
+     * @param {number} questId - Quest ID
+     * @param {number} value - Value to set
+     */
+    setQuestVar2(questId, value) {
+        this._call('DApi_SetQuestVar2', questId, value);
+    }
+
+    /**
+     * Activate a quest and optionally set its level
+     * @param {number} questId - Quest ID
+     * @param {number} level - Level number (-1 to keep existing)
+     */
+    activateQuest(questId, level = -1) {
+        this._call('DApi_ActivateQuest', questId, level);
+    }
+
+    /**
+     * Mark a quest as completed
+     * @param {number} questId - Quest ID
+     */
+    completeQuest(questId) {
+        this._call('DApi_CompleteQuest', questId);
+    }
+
+    /**
+     * Set quest trigger position
+     * @param {number} questId - Quest ID
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     */
+    setQuestPosition(questId, x, y) {
+        this._call('DApi_SetQuestPosition', questId, x, y);
+    }
+
+    /**
+     * Get count of currently active quests
+     * @returns {number} Number of active quests
+     */
+    getActiveQuestCount() {
+        return this._call('DApi_GetActiveQuestCount');
+    }
+
+    /**
+     * Get comprehensive quest state
+     * @param {number} questId - Quest ID
+     * @returns {object} Quest state object
+     */
+    getQuestInfo(questId) {
+        return {
+            id: questId,
+            state: this.getQuestState(questId),
+            level: this.getQuestLevel(questId),
+            inLog: this.getQuestLog(questId),
+            var1: this.getQuestVar1(questId),
+            var2: this.getQuestVar2(questId),
+        };
+    }
+
+    /**
+     * Get all quest states
+     * @returns {Array} Array of quest info objects
+     */
+    getAllQuests() {
+        const quests = [];
+        for (let i = 0; i < 24; i++) {
+            const state = this.getQuestState(i);
+            if (state >= 0) {
+                quests.push(this.getQuestInfo(i));
+            }
+        }
+        return quests;
+    }
+
+    // ========================================================================
     // Automap Access
     // ========================================================================
 
