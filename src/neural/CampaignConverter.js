@@ -24,6 +24,7 @@ import DUNParser from './DUNParser';
 import TileMapper, { TILE_SETS, BINARY_MARKERS, getThemeForLevel } from './TileMapper';
 import MonsterMapper from './MonsterMapper';
 import { validateLevel, checkPath, analyzeAreas } from './LevelValidator';
+import debugLogger, { LogCategory } from './DebugLogger';
 
 /**
  * Diablo Level Path Mapping
@@ -161,6 +162,8 @@ export function getAvailableLevelPaths(theme) {
  * @returns {Object} Conversion result with DUN files and validation
  */
 export function convertCampaign(campaign, options = {}) {
+  debugLogger.logCampaignStart(campaign);
+
   const results = {
     success: true,
     campaign: campaign.name || 'AI Campaign',
@@ -173,8 +176,14 @@ export function convertCampaign(campaign, options = {}) {
   if (!campaign || !campaign.acts) {
     results.success = false;
     results.errors.push('Invalid campaign: missing acts array');
+    debugLogger.error(LogCategory.CAMPAIGN, 'Invalid campaign: missing acts array', { campaign });
     return results;
   }
+
+  debugLogger.info(LogCategory.CAMPAIGN, `Processing ${campaign.acts.length} acts`, {
+    actCount: campaign.acts.length,
+    actNames: campaign.acts.map(a => a.name),
+  });
 
   let levelIndex = 1;
 
@@ -183,12 +192,17 @@ export function convertCampaign(campaign, options = {}) {
 
     if (!act.levels || !Array.isArray(act.levels)) {
       results.warnings.push(`Act ${actIndex + 1} has no levels`);
+      debugLogger.warn(LogCategory.CAMPAIGN, `Act ${actIndex + 1} has no levels`, { act });
       continue;
     }
+
+    debugLogger.info(LogCategory.CAMPAIGN, `Processing Act ${actIndex + 1}: "${act.name}" with ${act.levels.length} levels`);
 
     for (let lvlIndex = 0; lvlIndex < act.levels.length; lvlIndex++) {
       const level = act.levels[lvlIndex];
       const theme = getThemeForLevel(levelIndex);
+
+      debugLogger.logCampaignLevel(level, actIndex + 1, levelIndex);
 
       try {
         const converted = convertLevel(level, {
@@ -208,6 +222,10 @@ export function convertCampaign(campaign, options = {}) {
           stats: converted.validation.stats,
         });
 
+        // Log DUN conversion
+        debugLogger.logDunConversion(level, converted.path, converted.dunData);
+        debugLogger.logDunValidation(converted.path, converted.validation);
+
         if (!converted.validation.valid) {
           results.errors.push(`Level ${levelIndex}: ${converted.validation.errors.join(', ')}`);
         }
@@ -217,14 +235,31 @@ export function convertCampaign(campaign, options = {}) {
 
         results.files.set(converted.path, converted.buffer);
 
+        debugLogger.info(LogCategory.DUN, `DUN buffer created for ${converted.path}`, {
+          bufferSize: converted.buffer.length,
+          path: converted.path,
+        });
+
       } catch (error) {
         results.success = false;
         results.errors.push(`Failed to convert level ${levelIndex}: ${error.message}`);
+        debugLogger.error(LogCategory.DUN, `Failed to convert level ${levelIndex}`, {
+          error: error.message,
+          stack: error.stack,
+          level,
+        });
       }
 
       levelIndex++;
     }
   }
+
+  debugLogger.logCampaignComplete(campaign);
+  debugLogger.info(LogCategory.CAMPAIGN, `Conversion complete: ${results.files.size} DUN files created`, {
+    files: Array.from(results.files.keys()),
+    errors: results.errors,
+    warnings: results.warnings,
+  });
 
   return results;
 }

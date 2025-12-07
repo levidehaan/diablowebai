@@ -14,6 +14,7 @@
 
 import WASMBridge, { initWASMBridge } from './WASMBridge';
 import DUNParser from './DUNParser';
+import debugLogger, { LogCategory } from './DebugLogger';
 
 // Level injection states
 export const INJECTION_STATE = {
@@ -73,13 +74,17 @@ class LevelInjector {
    * @param {Worker} worker - The game worker instance
    */
   async init(worker) {
+    debugLogger.info(LogCategory.INJECTION, 'LevelInjector initialization starting...');
+
     if (this.initialized) {
       console.log('[LevelInjector] Already initialized');
+      debugLogger.warn(LogCategory.INJECTION, 'LevelInjector already initialized');
       return true;
     }
 
     if (!worker) {
       console.error('[LevelInjector] No worker provided');
+      debugLogger.error(LogCategory.INJECTION, 'No worker provided to LevelInjector');
       return false;
     }
 
@@ -89,8 +94,10 @@ class LevelInjector {
     const bridgeInit = initWASMBridge(worker);
     if (!bridgeInit) {
       console.error('[LevelInjector] Failed to init WASMBridge');
+      debugLogger.error(LogCategory.INJECTION, 'WASMBridge initialization failed');
       return false;
     }
+    debugLogger.info(LogCategory.INJECTION, 'WASMBridge initialized');
 
     // Listen for worker messages
     worker.addEventListener('message', this.handleWorkerMessage);
@@ -100,12 +107,19 @@ class LevelInjector {
       const scanResult = await WASMBridge.scanMemory();
       this.memoryDiscovered = scanResult.success;
       console.log('[LevelInjector] Memory scan:', scanResult);
+      debugLogger.logMemoryScan(scanResult.success, scanResult.pointer, scanResult.stats);
     } catch (err) {
       console.warn('[LevelInjector] Memory scan failed (game may not be loaded yet):', err.message);
+      debugLogger.warn(LogCategory.INJECTION, 'Memory scan failed (game may not be loaded)', {
+        error: err.message,
+      });
     }
 
     this.initialized = true;
     console.log('[LevelInjector] Initialized');
+    debugLogger.info(LogCategory.INJECTION, 'LevelInjector initialization COMPLETE', {
+      memoryDiscovered: this.memoryDiscovered,
+    });
     return true;
   }
 
@@ -118,12 +132,17 @@ class LevelInjector {
     switch (action) {
       case 'neural_scan_result':
         this.memoryDiscovered = data.success;
+        debugLogger.logMemoryScan(data.success, data.pointer, data.stats);
         this.emit('memoryDiscovered', data);
         break;
 
       case 'neural_inject_result':
         if (data.success) {
           this.state = INJECTION_STATE.COMPLETE;
+          debugLogger.logInjectionResult(this.currentInjection?.levelId, true, {
+            method: 'worker_message',
+            injection: this.currentInjection,
+          });
           this.emit('injectionComplete', this.currentInjection);
           this.history.push({
             timestamp: Date.now(),
@@ -132,6 +151,9 @@ class LevelInjector {
           });
         } else {
           this.state = INJECTION_STATE.FAILED;
+          debugLogger.logInjectionResult(this.currentInjection?.levelId, false, {
+            error: data.error,
+          });
           this.emit('injectionFailed', { error: data.error });
         }
         this.currentInjection = null;
@@ -140,6 +162,9 @@ class LevelInjector {
       case 'neural_write_result':
         if (data.success) {
           console.log('[LevelInjector] Grid write successful');
+          debugLogger.info(LogCategory.INJECTION, 'Grid write successful via worker');
+        } else {
+          debugLogger.error(LogCategory.INJECTION, 'Grid write failed', data);
         }
         break;
 
@@ -150,6 +175,7 @@ class LevelInjector {
 
         // Check for level transition
         if (data.currentLevel !== undefined && data.currentLevel !== prevLevel) {
+          debugLogger.info(LogCategory.INJECTION, `Game state: level transition detected ${prevLevel} → ${data.currentLevel}`);
           this.onLevelTransition(prevLevel, data.currentLevel);
         }
         break;
@@ -161,17 +187,31 @@ class LevelInjector {
    */
   async onLevelTransition(fromLevel, toLevel) {
     console.log(`[LevelInjector] Level transition: ${fromLevel} → ${toLevel}`);
+    debugLogger.info(LogCategory.INJECTION, `Level transition: ${fromLevel} → ${toLevel}`, {
+      fromLevel,
+      toLevel,
+      pendingLevels: Array.from(this.pendingLevels.keys()),
+      hasPendingForTarget: this.pendingLevels.has(toLevel),
+    });
 
     // Check if we have a pending level for this destination
     if (this.pendingLevels.has(toLevel)) {
       const levelData = this.pendingLevels.get(toLevel);
       console.log(`[LevelInjector] Found pending level for ${toLevel}, injecting...`);
+      debugLogger.info(LogCategory.INJECTION, `Found pending injection for level ${toLevel}, starting injection...`, {
+        levelId: toLevel,
+        gridSize: levelData.grid ? `${levelData.grid[0]?.length}x${levelData.grid.length}` : 'no grid',
+        monsters: levelData.monsters?.length || 0,
+        objects: levelData.objects?.length || 0,
+      });
 
       // Small delay to let the game engine set up the level first
       await this.delay(100);
 
       await this.injectLevelData(levelData, toLevel);
       this.pendingLevels.delete(toLevel);
+    } else {
+      debugLogger.debug(LogCategory.INJECTION, `No pending injection for level ${toLevel}`);
     }
 
     this.emit('levelTransition', { from: fromLevel, to: toLevel });
@@ -188,12 +228,26 @@ class LevelInjector {
     // Validate level data
     if (!levelData.grid || levelData.grid.length !== 40) {
       console.error('[LevelInjector] Invalid level data - grid must be 40x40');
+      debugLogger.error(LogCategory.INJECTION, `Invalid level data for level ${levelId}`, {
+        hasGrid: !!levelData.grid,
+        gridLength: levelData.grid?.length,
+        expected: 40,
+      });
       return false;
     }
 
     this.pendingLevels.set(levelId, {
       ...levelData,
       queuedAt: Date.now(),
+    });
+
+    debugLogger.logInjectionAttempt(levelId, 'queue', levelData);
+    debugLogger.info(LogCategory.INJECTION, `Level ${levelId} queued for injection`, {
+      levelId,
+      gridSize: `${levelData.grid[0]?.length}x${levelData.grid.length}`,
+      monsters: levelData.monsters?.length || 0,
+      objects: levelData.objects?.length || 0,
+      totalQueuedLevels: this.pendingLevels.size,
     });
 
     this.emit('levelQueued', { levelId, hasMonsters: !!levelData.monsters });

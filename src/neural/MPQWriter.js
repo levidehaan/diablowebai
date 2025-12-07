@@ -14,6 +14,7 @@
 
 import { encrypt, hash, path_name } from '../api/savefile';
 import pako from 'pako';
+import debugLogger, { LogCategory } from './DebugLogger';
 
 // MPQ Header constants
 const MPQ_MAGIC = 0x1A51504D;  // 'MPQ\x1A'
@@ -171,9 +172,16 @@ export class MPQWriter {
   setFile(path, data) {
     // Normalize path
     const normalPath = path.toLowerCase().replace(/\//g, '\\');
-    this.modifiedFiles.set(normalPath, data instanceof Uint8Array ? data : new Uint8Array(data));
+    const dataArray = data instanceof Uint8Array ? data : new Uint8Array(data);
+    this.modifiedFiles.set(normalPath, dataArray);
     this.deletedFiles.delete(normalPath);
-    console.log(`[MPQWriter] Set file: ${normalPath} (${data.length} bytes)`);
+
+    debugLogger.info(LogCategory.MPQ, `File queued for injection: ${normalPath}`, {
+      path: normalPath,
+      size: dataArray.length,
+      totalQueuedFiles: this.modifiedFiles.size,
+    });
+    console.log(`[MPQWriter] Set file: ${normalPath} (${dataArray.length} bytes)`);
   }
 
   /**
@@ -198,7 +206,10 @@ export class MPQWriter {
    * Strategy: Keep original data intact, append new files at end, rebuild tables
    */
   build() {
+    debugLogger.logMpqStart(this.originalBuffer?.byteLength || 0);
+
     if (!this.originalBuffer) {
+      debugLogger.error(LogCategory.MPQ, 'Build failed: No original MPQ loaded');
       throw new Error('No original MPQ loaded');
     }
 
@@ -212,7 +223,12 @@ export class MPQWriter {
       });
     }
 
+    debugLogger.info(LogCategory.MPQ, `Building MPQ with ${newFiles.length} modified files`, {
+      files: newFiles.map(f => ({ path: f.path, size: f.size })),
+    });
+
     if (newFiles.length === 0) {
+      debugLogger.warn(LogCategory.MPQ, 'No modifications, returning original MPQ');
       console.log('[MPQWriter] No modifications, returning original');
       return new Uint8Array(this.originalBuffer);
     }
@@ -227,6 +243,9 @@ export class MPQWriter {
     for (const entry of fileEntries) {
       entry.filePos = appendPos;
       appendPos += entry.data.length;
+
+      // Log each file being injected with compression info
+      debugLogger.logMpqFileInject(entry.path, entry.originalSize, entry.data.length);
     }
 
     // Calculate new table positions
@@ -268,6 +287,21 @@ export class MPQWriter {
     console.log(`[MPQWriter] Built MPQ: ${totalSize} bytes, ${fileEntries.length} modified files`);
     console.log(`[MPQWriter] Original hash table at ${this.hashTablePos}, new at ${newHashTablePos}`);
     console.log(`[MPQWriter] Original block table at ${this.blockTablePos}, new at ${newBlockTablePos}`);
+
+    // Log build result
+    debugLogger.logMpqBuild({
+      totalSize,
+      filesModified: fileEntries.length,
+      originalSize: this.originalBuffer.byteLength,
+      hashTableOffset: newHashTablePos,
+      blockTableOffset: newBlockTablePos,
+      fileList: fileEntries.map(e => ({
+        path: e.path,
+        pos: e.filePos,
+        size: e.data.length,
+        originalSize: e.originalSize,
+      })),
+    });
 
     return output;
   }
