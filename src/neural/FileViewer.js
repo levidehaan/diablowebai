@@ -1794,6 +1794,7 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
     const width = frame.width * zoom;
     const height = frame.height * zoom;
 
+    // Set canvas buffer size
     canvas.width = width;
     canvas.height = height;
 
@@ -1811,10 +1812,26 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
       }
     }
 
-    // Render sprite
-    const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
-    const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
-    ctx.putImageData(imageData, 0, 0);
+    // Render sprite using ImageData
+    try {
+      const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
+      const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
+
+      // Use a temp canvas to properly composite the sprite with transparency
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.putImageData(imageData, 0, 0);
+
+      // Draw sprite on top of checkerboard (preserves transparency)
+      ctx.drawImage(tempCanvas, 0, 0);
+    } catch (err) {
+      console.error('CEL render error:', err);
+      ctx.fillStyle = '#f00';
+      ctx.font = '12px monospace';
+      ctx.fillText('Render error: ' + err.message, 10, 20);
+    }
 
     // Draw grid if enabled
     if (showGrid && zoom >= 2) {
@@ -1984,7 +2001,14 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
       </div>
 
       <div className="cel-viewer-canvas-container">
-        <canvas ref={canvasRef} className="cel-viewer-canvas" />
+        <canvas
+          ref={canvasRef}
+          className="cel-viewer-canvas"
+          style={{
+            width: currentFrameData ? currentFrameData.width * zoom : 100,
+            height: currentFrameData ? currentFrameData.height * zoom : 100,
+          }}
+        />
       </div>
 
       {celData.frames.length > 1 && (
