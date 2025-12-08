@@ -1222,6 +1222,47 @@
       }
     }
   }
+
+  &-legend {
+    padding: 10px 12px;
+    background: #1a1a22;
+    border-bottom: 1px solid #333;
+    font-size: 11px;
+    color: #888;
+
+    p {
+      margin: 0 0 8px 0;
+      line-height: 1.5;
+
+      strong {
+        color: #a94;
+      }
+    }
+
+    .til-legend-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      max-width: 300px;
+      margin: 8px 0;
+
+      .legend-cell {
+        background: #252530;
+        padding: 4px 8px;
+        border-radius: 3px;
+        font-size: 10px;
+        color: #aaa;
+        text-align: center;
+      }
+    }
+
+    .til-legend-note {
+      margin: 8px 0 0 0;
+      color: #666;
+      font-size: 10px;
+      font-style: italic;
+    }
+  }
 }
 
 // ============================================
