@@ -19,7 +19,7 @@ import { MpqReader } from '../api/savefile';
 import { CampaignPackageLoader } from './CampaignPackage';
 import { LevelPreview, MiniMap } from './LevelPreview';
 import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
-import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, FileInfo, CELViewer, CL2Viewer, getFileType, getFileCategory } from './FileViewer';
+import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, FileInfo, CELViewer, CL2Viewer, PCXViewer, getFileType, getFileCategory } from './FileViewer';
 
 // Spawn.mpq valid sizes
 const SpawnSizes = [50274091, 25830791];
@@ -1334,8 +1334,16 @@ export class ModEditor extends Component {
                   />
                 )}
 
+                {/* PCX Image Viewer */}
+                {viewMode === 'preview' && selectedFileType?.key === 'PCX' && selectedFileData && (
+                  <PCXViewer
+                    data={selectedFileData}
+                    filename={selectedFile}
+                  />
+                )}
+
                 {/* Generic file preview (not yet supported) */}
-                {viewMode === 'preview' && !['DUN', 'PAL', 'SOL', 'MIN', 'TIL', 'WAV', 'CEL', 'CL2'].includes(selectedFileType?.key) && (
+                {viewMode === 'preview' && !['DUN', 'PAL', 'SOL', 'MIN', 'TIL', 'WAV', 'CEL', 'CL2', 'PCX'].includes(selectedFileType?.key) && (
                   <div className="generic-file-info">
                     <p>File type: <strong>{selectedFileType?.name}</strong></p>
                     <p>Size: <strong>{selectedFileData ? selectedFileData.byteLength?.toLocaleString() || 'N/A' : 'Loading...'} bytes</strong></p>

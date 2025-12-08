@@ -981,6 +981,187 @@ export function renderFrameToCanvas(ctx, frame, palette = DIABLO_FULL_PALETTE, x
   ctx.putImageData(imageData, x, y);
 }
 
+/**
+ * Decode a PCX image file
+ * PCX is a legacy image format used in Diablo's UI artwork
+ * @param {Uint8Array} pcxData - PCX file data
+ * @returns {Object} Decoded image with width, height, and RGBA data
+ */
+export function decodePCX(pcxData) {
+  const view = new DataView(pcxData.buffer, pcxData.byteOffset, pcxData.byteLength);
+
+  // PCX Header (128 bytes)
+  const manufacturer = pcxData[0]; // Should be 0x0A
+  const version = pcxData[1];
+  const encoding = pcxData[2]; // 1 = RLE
+  const bitsPerPixel = pcxData[3];
+
+  const xMin = view.getUint16(4, true);
+  const yMin = view.getUint16(6, true);
+  const xMax = view.getUint16(8, true);
+  const yMax = view.getUint16(10, true);
+
+  const width = xMax - xMin + 1;
+  const height = yMax - yMin + 1;
+
+  const hDpi = view.getUint16(12, true);
+  const vDpi = view.getUint16(14, true);
+
+  // EGA palette at offset 16 (48 bytes, 16 RGB triplets)
+  const egaPalette = [];
+  for (let i = 0; i < 16; i++) {
+    egaPalette.push([
+      pcxData[16 + i * 3],
+      pcxData[16 + i * 3 + 1],
+      pcxData[16 + i * 3 + 2],
+    ]);
+  }
+
+  const reserved = pcxData[64];
+  const numPlanes = pcxData[65];
+  const bytesPerLine = view.getUint16(66, true);
+  const paletteType = view.getUint16(68, true); // 1 = color, 2 = grayscale
+
+  // Validate PCX header
+  if (manufacturer !== 0x0A) {
+    throw new Error(`Invalid PCX file: manufacturer byte is ${manufacturer}, expected 10`);
+  }
+
+  // Decode image data (starts at offset 128)
+  const totalBytes = bytesPerLine * numPlanes;
+  const scanlines = [];
+  let offset = 128;
+
+  for (let y = 0; y < height; y++) {
+    const scanline = new Uint8Array(totalBytes);
+    let x = 0;
+
+    while (x < totalBytes && offset < pcxData.length) {
+      const byte = pcxData[offset++];
+
+      if ((byte & 0xC0) === 0xC0) {
+        // RLE run
+        const runLength = byte & 0x3F;
+        const value = pcxData[offset++];
+        for (let i = 0; i < runLength && x < totalBytes; i++) {
+          scanline[x++] = value;
+        }
+      } else {
+        // Literal byte
+        scanline[x++] = byte;
+      }
+    }
+
+    scanlines.push(scanline);
+  }
+
+  // Check for VGA palette (256 colors) at end of file
+  let palette = egaPalette;
+  let is256Color = false;
+
+  if (bitsPerPixel === 8 && numPlanes === 1) {
+    // Look for VGA palette marker (0x0C) 769 bytes from end
+    const paletteOffset = pcxData.length - 769;
+    if (paletteOffset > 0 && pcxData[paletteOffset] === 0x0C) {
+      palette = [];
+      for (let i = 0; i < 256; i++) {
+        palette.push([
+          pcxData[paletteOffset + 1 + i * 3],
+          pcxData[paletteOffset + 1 + i * 3 + 1],
+          pcxData[paletteOffset + 1 + i * 3 + 2],
+        ]);
+      }
+      is256Color = true;
+    }
+  }
+
+  // Convert to RGBA
+  const rgba = new Uint8ClampedArray(width * height * 4);
+
+  if (bitsPerPixel === 8 && numPlanes === 1) {
+    // 8-bit indexed color
+    for (let y = 0; y < height; y++) {
+      const scanline = scanlines[y];
+      for (let x = 0; x < width; x++) {
+        const colorIndex = scanline[x];
+        const [r, g, b] = palette[colorIndex] || [0, 0, 0];
+        const idx = (y * width + x) * 4;
+        rgba[idx] = r;
+        rgba[idx + 1] = g;
+        rgba[idx + 2] = b;
+        rgba[idx + 3] = 255;
+      }
+    }
+  } else if (bitsPerPixel === 8 && numPlanes === 3) {
+    // 24-bit RGB (3 planes)
+    for (let y = 0; y < height; y++) {
+      const scanline = scanlines[y];
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        rgba[idx] = scanline[x]; // R plane
+        rgba[idx + 1] = scanline[bytesPerLine + x]; // G plane
+        rgba[idx + 2] = scanline[bytesPerLine * 2 + x]; // B plane
+        rgba[idx + 3] = 255;
+      }
+    }
+  } else if (bitsPerPixel === 1 && numPlanes === 4) {
+    // 4-bit planar (16 colors)
+    for (let y = 0; y < height; y++) {
+      const scanline = scanlines[y];
+      for (let x = 0; x < width; x++) {
+        const byteIndex = Math.floor(x / 8);
+        const bitIndex = 7 - (x % 8);
+
+        let colorIndex = 0;
+        for (let plane = 0; plane < 4; plane++) {
+          const planeByte = scanline[plane * bytesPerLine + byteIndex];
+          if (planeByte & (1 << bitIndex)) {
+            colorIndex |= (1 << plane);
+          }
+        }
+
+        const [r, g, b] = palette[colorIndex] || [0, 0, 0];
+        const idx = (y * width + x) * 4;
+        rgba[idx] = r;
+        rgba[idx + 1] = g;
+        rgba[idx + 2] = b;
+        rgba[idx + 3] = 255;
+      }
+    }
+  } else if (bitsPerPixel === 1 && numPlanes === 1) {
+    // 1-bit monochrome
+    for (let y = 0; y < height; y++) {
+      const scanline = scanlines[y];
+      for (let x = 0; x < width; x++) {
+        const byteIndex = Math.floor(x / 8);
+        const bitIndex = 7 - (x % 8);
+        const pixel = (scanline[byteIndex] & (1 << bitIndex)) ? 255 : 0;
+
+        const idx = (y * width + x) * 4;
+        rgba[idx] = pixel;
+        rgba[idx + 1] = pixel;
+        rgba[idx + 2] = pixel;
+        rgba[idx + 3] = 255;
+      }
+    }
+  } else {
+    throw new Error(`Unsupported PCX format: ${bitsPerPixel} bits/pixel, ${numPlanes} planes`);
+  }
+
+  return {
+    width,
+    height,
+    rgba,
+    bitsPerPixel,
+    numPlanes,
+    palette,
+    is256Color,
+    version,
+    hDpi,
+    vDpi,
+  };
+}
+
 // Default export
 const CELEncoder = {
   parsePalette,
@@ -993,6 +1174,7 @@ const CELEncoder = {
   decodeCEL,
   decodeCELFull,
   decodeCL2,
+  decodePCX,
   renderFrameToImageData,
   renderFrameToCanvas,
   indicesToRGBA,

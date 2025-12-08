@@ -49,6 +49,7 @@ export const FILE_TYPES = {
   SOL: { ext: '.sol', name: 'Collision', icon: '🚧', color: '#944' },
   CEL: { ext: '.cel', name: 'Sprite', icon: '🖼️', color: '#94a' },
   CL2: { ext: '.cl2', name: 'Animation', icon: '🎬', color: '#4aa' },
+  PCX: { ext: '.pcx', name: 'Image', icon: '🖼️', color: '#a9a' },
   WAV: { ext: '.wav', name: 'Sound', icon: '🔊', color: '#aa4' },
   TXT: { ext: '.txt', name: 'Text', icon: '📄', color: '#888' },
   OTHER: { ext: '', name: 'Binary', icon: '📦', color: '#666' },
@@ -1901,6 +1902,178 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
   );
 }
 
+/**
+ * PCXViewer - Display PCX image files (legacy format used in Diablo UI)
+ */
+export function PCXViewer({ data, filename }) {
+  const canvasRef = useRef(null);
+  const [pcxData, setPcxData] = useState(null);
+  const [zoom, setZoom] = useState(2);
+  const [error, setError] = useState(null);
+  const [showInfo, setShowInfo] = useState(true);
+
+  const decoderRef = useRef(null);
+
+  useEffect(() => {
+    import('./CELEncoder').then(module => {
+      decoderRef.current = module;
+    });
+  }, []);
+
+  // Decode PCX data
+  useEffect(() => {
+    if (!data || !decoderRef.current) return;
+
+    try {
+      const bytes = new Uint8Array(data);
+      const decoded = decoderRef.current.decodePCX(bytes);
+      setPcxData(decoded);
+      setError(null);
+    } catch (err) {
+      console.error('PCX decode error:', err);
+      setError(err.message);
+      setPcxData(null);
+    }
+  }, [data]);
+
+  // Render image
+  useEffect(() => {
+    if (!pcxData || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    const width = pcxData.width * zoom;
+    const height = pcxData.height * zoom;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    // Draw checkerboard background for transparency
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, width, height);
+
+    const checkSize = 8;
+    ctx.fillStyle = '#252540';
+    for (let y = 0; y < height; y += checkSize * 2) {
+      for (let x = 0; x < width; x += checkSize * 2) {
+        ctx.fillRect(x, y, checkSize, checkSize);
+        ctx.fillRect(x + checkSize, y + checkSize, checkSize, checkSize);
+      }
+    }
+
+    // Create ImageData and scale
+    const imageData = new ImageData(
+      new Uint8ClampedArray(pcxData.rgba),
+      pcxData.width,
+      pcxData.height
+    );
+
+    // Use temporary canvas for scaling
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = pcxData.width;
+    tempCanvas.height = pcxData.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.putImageData(imageData, 0, 0);
+
+    // Draw scaled
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tempCanvas, 0, 0, width, height);
+  }, [pcxData, zoom]);
+
+  if (error) {
+    return (
+      <div className="pcx-viewer pcx-viewer-error">
+        <div className="error-icon">⚠️</div>
+        <div className="error-message">Failed to decode PCX file</div>
+        <div className="error-detail">{error}</div>
+      </div>
+    );
+  }
+
+  if (!pcxData) {
+    return (
+      <div className="pcx-viewer pcx-viewer-loading">
+        <div className="loading-spinner">⏳</div>
+        <div>Decoding image...</div>
+      </div>
+    );
+  }
+
+  const colorMode = pcxData.bitsPerPixel === 8 && pcxData.numPlanes === 1
+    ? (pcxData.is256Color ? '256-color' : '16-color')
+    : pcxData.bitsPerPixel === 8 && pcxData.numPlanes === 3
+    ? '24-bit RGB'
+    : pcxData.bitsPerPixel === 1
+    ? 'Monochrome'
+    : `${pcxData.bitsPerPixel}bpp/${pcxData.numPlanes}p`;
+
+  return (
+    <div className="pcx-viewer">
+      <div className="pcx-viewer-header">
+        <span className="pcx-filename">{filename.split('/').pop()}</span>
+        <span className="pcx-info">
+          {pcxData.width}×{pcxData.height} | {colorMode}
+        </span>
+      </div>
+
+      <div className="pcx-viewer-controls">
+        <div className="control-group">
+          <label>Zoom:</label>
+          <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))}>
+            <option value={1}>1x</option>
+            <option value={2}>2x</option>
+            <option value={3}>3x</option>
+            <option value={4}>4x</option>
+            <option value={6}>6x</option>
+            <option value={8}>8x</option>
+          </select>
+        </div>
+
+        <div className="control-group">
+          <label>
+            <input
+              type="checkbox"
+              checked={showInfo}
+              onChange={(e) => setShowInfo(e.target.checked)}
+            />
+            Show details
+          </label>
+        </div>
+      </div>
+
+      <div className="pcx-viewer-canvas-container">
+        <canvas ref={canvasRef} className="pcx-viewer-canvas" />
+      </div>
+
+      {showInfo && (
+        <div className="pcx-info-panel">
+          <div className="info-row">
+            <span className="info-label">Dimensions:</span>
+            <span>{pcxData.width} × {pcxData.height} pixels</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Color depth:</span>
+            <span>{pcxData.bitsPerPixel} bits/pixel, {pcxData.numPlanes} plane(s)</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Palette:</span>
+            <span>{pcxData.is256Color ? '256 colors (VGA)' : `${pcxData.palette.length} colors`}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Resolution:</span>
+            <span>{pcxData.hDpi} × {pcxData.vDpi} DPI</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">PCX version:</span>
+            <span>{pcxData.version}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default {
   HexViewer,
   PaletteViewer,
@@ -1911,6 +2084,7 @@ export default {
   FileInfo,
   CELViewer,
   CL2Viewer,
+  PCXViewer,
   getFileType,
   getFileCategory
 };
