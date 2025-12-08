@@ -8,7 +8,7 @@
  * - TileDataViewer: MIN/TIL/SOL data display
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 // Monster data for placement palette
 const COMMON_MONSTERS = [
@@ -260,13 +260,98 @@ export function DUNEditor({ data, filename, onModify, onSave }) {
   const [paintTileId, setPaintTileId] = useState(13); // Default floor
   const [paintMonsterId, setPaintMonsterId] = useState(33); // Default skeleton
   const [paintObjectId, setPaintObjectId] = useState(1); // Default barrel
-  const [zoom, setZoom] = useState(10);
+  const [zoom, setZoom] = useState(16); // Larger default zoom
   const [showGrid, setShowGrid] = useState(true);
   const [layer, setLayer] = useState('base'); // base, monsters, objects, items
+  const [showStats, setShowStats] = useState(true);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isDragging, setIsDragging] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Compute level statistics
+  const computeStats = useCallback((dunData) => {
+    if (!dunData) return null;
+
+    const { width, height, baseLayer, subLayers } = dunData;
+
+    // Count tile types
+    const tileStats = {};
+    let floorCount = 0, wallCount = 0, doorCount = 0, stairsCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const tileId = baseLayer[y][x];
+        tileStats[tileId] = (tileStats[tileId] || 0) + 1;
+
+        // Categorize
+        if (tileId === 0) continue;
+        if (tileId >= 13 && tileId <= 15) floorCount++;
+        else if (tileId >= 1 && tileId <= 4) wallCount++;
+        else if (tileId >= 25 && tileId <= 32) doorCount++;
+        else if (tileId >= 36 && tileId <= 39) stairsCount++;
+      }
+    }
+
+    // Count monsters by type
+    const monsterStats = {};
+    let totalMonsters = 0;
+    const monsters = subLayers.monsters || [];
+    for (let y = 0; y < monsters.length; y++) {
+      for (let x = 0; x < (monsters[y] || []).length; x++) {
+        const mId = monsters[y][x];
+        if (mId > 0) {
+          monsterStats[mId] = (monsterStats[mId] || 0) + 1;
+          totalMonsters++;
+        }
+      }
+    }
+
+    // Count objects by type
+    const objectStats = {};
+    let totalObjects = 0;
+    const objects = subLayers.objects || [];
+    for (let y = 0; y < objects.length; y++) {
+      for (let x = 0; x < (objects[y] || []).length; x++) {
+        const oId = objects[y][x];
+        if (oId > 0) {
+          objectStats[oId] = (objectStats[oId] || 0) + 1;
+          totalObjects++;
+        }
+      }
+    }
+
+    // Count items
+    let totalItems = 0;
+    const items = subLayers.items || [];
+    for (let y = 0; y < items.length; y++) {
+      for (let x = 0; x < (items[y] || []).length; x++) {
+        if (items[y][x] > 0) totalItems++;
+      }
+    }
+
+    // Estimate level theme based on tile distribution
+    let theme = 'unknown';
+    if (wallCount > width * height * 0.3) theme = 'cathedral';
+    else if (floorCount > width * height * 0.6) theme = 'caves';
+    else if (doorCount > 4) theme = 'catacombs';
+
+    return {
+      dimensions: `${width} × ${height}`,
+      totalTiles: width * height,
+      floorCount,
+      wallCount,
+      doorCount,
+      stairsCount,
+      totalMonsters,
+      totalObjects,
+      totalItems,
+      monsterStats,
+      objectStats,
+      tileStats,
+      theme,
+    };
+  }, []);
 
   // Parse DUN data
   useEffect(() => {
@@ -326,6 +411,9 @@ export function DUNEditor({ data, filename, onModify, onSave }) {
       console.error('Failed to parse DUN:', err);
     }
   }, [data]);
+
+  // Compute stats when dunData changes
+  const stats = useMemo(() => computeStats(dunData), [dunData, computeStats]);
 
   // Push state to history
   const pushHistory = useCallback((newState) => {
@@ -785,7 +873,96 @@ export function DUNEditor({ data, filename, onModify, onSave }) {
             Selected: ({selectedTile.x}, {selectedTile.y}) = {selectedTile.tileId}
           </span>
         )}
+        <button
+          className="stats-toggle"
+          onClick={() => setShowStats(!showStats)}
+          title="Toggle level statistics"
+        >
+          {showStats ? '▼' : '▶'} Stats
+        </button>
       </div>
+
+      {/* Level Statistics Panel */}
+      {showStats && stats && (
+        <div className="dun-editor-stats">
+          <div className="stats-grid">
+            <div className="stat-item">
+              <span className="stat-label">Dimensions:</span>
+              <span className="stat-value">{stats.dimensions}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Total Tiles:</span>
+              <span className="stat-value">{stats.totalTiles}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Floor Tiles:</span>
+              <span className="stat-value">{stats.floorCount}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Wall Tiles:</span>
+              <span className="stat-value">{stats.wallCount}</span>
+            </div>
+            <div className="stat-item highlight-red">
+              <span className="stat-label">Monsters:</span>
+              <span className="stat-value">{stats.totalMonsters}</span>
+            </div>
+            <div className="stat-item highlight-gold">
+              <span className="stat-label">Objects:</span>
+              <span className="stat-value">{stats.totalObjects}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Items:</span>
+              <span className="stat-value">{stats.totalItems}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Doors:</span>
+              <span className="stat-value">{stats.doorCount}</span>
+            </div>
+            <div className="stat-item highlight-green">
+              <span className="stat-label">Stairs:</span>
+              <span className="stat-value">{stats.stairsCount}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Theme:</span>
+              <span className="stat-value">{stats.theme}</span>
+            </div>
+          </div>
+
+          {/* Monster breakdown */}
+          {Object.keys(stats.monsterStats).length > 0 && (
+            <div className="stats-breakdown">
+              <span className="breakdown-label">Monsters:</span>
+              <div className="breakdown-items">
+                {Object.entries(stats.monsterStats).map(([id, count]) => {
+                  const monster = COMMON_MONSTERS.find(m => m.id === parseInt(id));
+                  return (
+                    <span key={id} className="breakdown-item">
+                      {monster?.name || `Type ${id}`}: {count}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Object breakdown */}
+          {Object.keys(stats.objectStats).length > 0 && (
+            <div className="stats-breakdown">
+              <span className="breakdown-label">Objects:</span>
+              <div className="breakdown-items">
+                {Object.entries(stats.objectStats).map(([id, count]) => {
+                  const obj = COMMON_OBJECTS.find(o => o.id === parseInt(id));
+                  return (
+                    <span key={id} className="breakdown-item">
+                      {obj?.name || `Type ${id}`}: {count}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="dun-editor-canvas-container">
         <canvas
@@ -1247,11 +1424,14 @@ export function MINViewer({ data, filename }) {
 }
 
 /**
- * TILViewer - Display tile definition data
+ * TILViewer - Display tile definition data with graphical preview
  */
 export function TILViewer({ data, filename }) {
   const [tilData, setTilData] = useState(null);
   const [selectedEntry, setSelectedEntry] = useState(null);
+  const [viewMode, setViewMode] = useState('grid'); // grid, table
+  const [tileSize, setTileSize] = useState(32);
+  const [showLabels, setShowLabels] = useState(true);
 
   useEffect(() => {
     if (!data) return;
@@ -1266,22 +1446,81 @@ export function TILViewer({ data, filename }) {
       const numEntries = Math.floor(bytes.length / entrySize);
 
       const entries = [];
+      let maxFrame = 0;
       for (let i = 0; i < numEntries; i++) {
         const offset = i * entrySize;
-        entries.push({
+        const entry = {
           index: i,
           frame0: view.getUint16(offset, true),
           frame1: view.getUint16(offset + 2, true),
           frame2: view.getUint16(offset + 4, true),
           frame3: view.getUint16(offset + 6, true),
-        });
+        };
+        entries.push(entry);
+        maxFrame = Math.max(maxFrame, entry.frame0, entry.frame1, entry.frame2, entry.frame3);
       }
 
-      setTilData({ entries, numEntries, bytes });
+      setTilData({ entries, numEntries, bytes, maxFrame });
     } catch (err) {
       console.error('Failed to parse TIL:', err);
     }
   }, [data]);
+
+  // Generate a color based on frame index for visualization
+  const getFrameColor = useCallback((frameIndex) => {
+    if (frameIndex === 0) return '#1a1a1a';
+    // Generate a distinct color based on frame index
+    const hue = (frameIndex * 137.5) % 360; // Golden angle for good color distribution
+    const saturation = 50 + (frameIndex % 30);
+    const lightness = 30 + (frameIndex % 25);
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  }, []);
+
+  // Render a single tile as a 2x2 grid of its frames
+  const renderTilePreview = useCallback((entry, size, isSelected) => {
+    const halfSize = size / 2;
+    return (
+      <div
+        className={`til-preview-tile ${isSelected ? 'selected' : ''}`}
+        onClick={() => setSelectedEntry(entry)}
+        title={`Tile ${entry.index}: [${entry.frame0}, ${entry.frame1}, ${entry.frame2}, ${entry.frame3}]`}
+        style={{
+          width: size,
+          height: size,
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gridTemplateRows: '1fr 1fr',
+          border: isSelected ? '2px solid #fff' : '1px solid #333',
+          cursor: 'pointer',
+        }}
+      >
+        <div
+          className="frame-cell"
+          style={{ backgroundColor: getFrameColor(entry.frame0), width: halfSize, height: halfSize }}
+        >
+          {showLabels && size >= 48 && <span className="frame-label">{entry.frame0}</span>}
+        </div>
+        <div
+          className="frame-cell"
+          style={{ backgroundColor: getFrameColor(entry.frame1), width: halfSize, height: halfSize }}
+        >
+          {showLabels && size >= 48 && <span className="frame-label">{entry.frame1}</span>}
+        </div>
+        <div
+          className="frame-cell"
+          style={{ backgroundColor: getFrameColor(entry.frame2), width: halfSize, height: halfSize }}
+        >
+          {showLabels && size >= 48 && <span className="frame-label">{entry.frame2}</span>}
+        </div>
+        <div
+          className="frame-cell"
+          style={{ backgroundColor: getFrameColor(entry.frame3), width: halfSize, height: halfSize }}
+        >
+          {showLabels && size >= 48 && <span className="frame-label">{entry.frame3}</span>}
+        </div>
+      </div>
+    );
+  }, [getFrameColor, showLabels]);
 
   if (!tilData) {
     return <div className="til-viewer-loading">Parsing tile data...</div>;
@@ -1291,42 +1530,142 @@ export function TILViewer({ data, filename }) {
     <div className="til-viewer">
       <div className="til-viewer-header">
         <span className="til-filename">{filename}</span>
-        <span className="til-info">{tilData.numEntries} tile definitions</span>
+        <span className="til-info">
+          {tilData.numEntries} tiles | Max frame: {tilData.maxFrame}
+        </span>
+        <div className="til-controls">
+          <button
+            className={viewMode === 'grid' ? 'active' : ''}
+            onClick={() => setViewMode('grid')}
+            title="Grid view"
+          >
+            Grid
+          </button>
+          <button
+            className={viewMode === 'table' ? 'active' : ''}
+            onClick={() => setViewMode('table')}
+            title="Table view"
+          >
+            Table
+          </button>
+          {viewMode === 'grid' && (
+            <>
+              <span className="control-divider">|</span>
+              <span className="control-label">Size:</span>
+              <input
+                type="range"
+                min="24"
+                max="80"
+                value={tileSize}
+                onChange={(e) => setTileSize(Number(e.target.value))}
+              />
+              <span>{tileSize}px</span>
+              <label className="control-checkbox">
+                <input
+                  type="checkbox"
+                  checked={showLabels}
+                  onChange={(e) => setShowLabels(e.target.checked)}
+                />
+                Labels
+              </label>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="til-viewer-list" style={{ maxHeight: '400px', overflow: 'auto' }}>
-        <table className="til-table">
-          <thead>
-            <tr>
-              <th>Index</th>
-              <th>Frame 0</th>
-              <th>Frame 1</th>
-              <th>Frame 2</th>
-              <th>Frame 3</th>
-            </tr>
-          </thead>
-          <tbody>
+      {/* Grid View - Visual tile preview */}
+      {viewMode === 'grid' && (
+        <div className="til-viewer-grid" style={{ maxHeight: '400px', overflow: 'auto' }}>
+          <div className="til-grid" style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(auto-fill, minmax(${tileSize}px, ${tileSize}px))`,
+            gap: '4px',
+            padding: '8px',
+          }}>
             {tilData.entries.map((entry) => (
-              <tr
-                key={entry.index}
-                className={selectedEntry?.index === entry.index ? 'selected' : ''}
-                onClick={() => setSelectedEntry(entry)}
-              >
-                <td>{entry.index}</td>
-                <td>{entry.frame0}</td>
-                <td>{entry.frame1}</td>
-                <td>{entry.frame2}</td>
-                <td>{entry.frame3}</td>
-              </tr>
+              <div key={entry.index} className="til-grid-item">
+                {renderTilePreview(entry, tileSize, selectedEntry?.index === entry.index)}
+                {tileSize >= 32 && (
+                  <div className="til-grid-label">{entry.index}</div>
+                )}
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </div>
+      )}
 
+      {/* Table View - Detailed data */}
+      {viewMode === 'table' && (
+        <div className="til-viewer-list" style={{ maxHeight: '400px', overflow: 'auto' }}>
+          <table className="til-table">
+            <thead>
+              <tr>
+                <th>Index</th>
+                <th>Preview</th>
+                <th>Frame 0</th>
+                <th>Frame 1</th>
+                <th>Frame 2</th>
+                <th>Frame 3</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tilData.entries.map((entry) => (
+                <tr
+                  key={entry.index}
+                  className={selectedEntry?.index === entry.index ? 'selected' : ''}
+                  onClick={() => setSelectedEntry(entry)}
+                >
+                  <td>{entry.index}</td>
+                  <td>
+                    {renderTilePreview(entry, 32, false)}
+                  </td>
+                  <td style={{ backgroundColor: getFrameColor(entry.frame0) + '33' }}>
+                    {entry.frame0}
+                  </td>
+                  <td style={{ backgroundColor: getFrameColor(entry.frame1) + '33' }}>
+                    {entry.frame1}
+                  </td>
+                  <td style={{ backgroundColor: getFrameColor(entry.frame2) + '33' }}>
+                    {entry.frame2}
+                  </td>
+                  <td style={{ backgroundColor: getFrameColor(entry.frame3) + '33' }}>
+                    {entry.frame3}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Selected tile detail panel */}
       {selectedEntry && (
         <div className="til-selection">
-          <strong>Tile {selectedEntry.index}:</strong>{' '}
-          Frames [{selectedEntry.frame0}, {selectedEntry.frame1}, {selectedEntry.frame2}, {selectedEntry.frame3}]
+          <div className="til-selection-preview">
+            {renderTilePreview(selectedEntry, 80, false)}
+          </div>
+          <div className="til-selection-details">
+            <div className="til-selection-title">Tile {selectedEntry.index}</div>
+            <div className="til-selection-info">
+              <div className="frame-info">
+                <span className="frame-badge" style={{ backgroundColor: getFrameColor(selectedEntry.frame0) }}>
+                  TL: {selectedEntry.frame0}
+                </span>
+                <span className="frame-badge" style={{ backgroundColor: getFrameColor(selectedEntry.frame1) }}>
+                  TR: {selectedEntry.frame1}
+                </span>
+                <span className="frame-badge" style={{ backgroundColor: getFrameColor(selectedEntry.frame2) }}>
+                  BL: {selectedEntry.frame2}
+                </span>
+                <span className="frame-badge" style={{ backgroundColor: getFrameColor(selectedEntry.frame3) }}>
+                  BR: {selectedEntry.frame3}
+                </span>
+              </div>
+              <div className="tile-layout">
+                2×2 tile composed of 4 MIN frame references
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1368,6 +1707,7 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
   const [fps, setFps] = useState(10);
   const [error, setError] = useState(null);
   const [showGrid, setShowGrid] = useState(false);
+  const [decoderLoaded, setDecoderLoaded] = useState(false);
   const animationRef = useRef(null);
 
   // Import decoder lazily
@@ -1376,12 +1716,13 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
   useEffect(() => {
     import('./CELEncoder').then(module => {
       decoderRef.current = module;
+      setDecoderLoaded(true);
     });
   }, []);
 
   // Decode CEL data
   useEffect(() => {
-    if (!data || !decoderRef.current) return;
+    if (!data || !decoderRef.current || !decoderLoaded) return;
 
     try {
       const bytes = new Uint8Array(data);
@@ -1396,7 +1737,7 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
       setError(err.message);
       setCelData(null);
     }
-  }, [data, externalPalette]);
+  }, [data, externalPalette, decoderLoaded]);
 
   // Animation loop
   useEffect(() => {
@@ -1608,6 +1949,7 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
   const [fps, setFps] = useState(10);
   const [error, setError] = useState(null);
   const [showAllDirections, setShowAllDirections] = useState(false);
+  const [decoderLoaded, setDecoderLoaded] = useState(false);
   const animationRef = useRef(null);
 
   const decoderRef = useRef(null);
@@ -1618,12 +1960,13 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
   useEffect(() => {
     import('./CELEncoder').then(module => {
       decoderRef.current = module;
+      setDecoderLoaded(true);
     });
   }, []);
 
   // Decode CL2 data
   useEffect(() => {
-    if (!data || !decoderRef.current) return;
+    if (!data || !decoderRef.current || !decoderLoaded) return;
 
     try {
       const bytes = new Uint8Array(data);
@@ -1645,7 +1988,7 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
       setError(err.message);
       setCl2Data(null);
     }
-  }, [data, externalPalette]);
+  }, [data, externalPalette, decoderLoaded]);
 
   // Get current frames
   const getCurrentFrames = useCallback(() => {
@@ -1911,18 +2254,20 @@ export function PCXViewer({ data, filename }) {
   const [zoom, setZoom] = useState(2);
   const [error, setError] = useState(null);
   const [showInfo, setShowInfo] = useState(true);
+  const [decoderLoaded, setDecoderLoaded] = useState(false);
 
   const decoderRef = useRef(null);
 
   useEffect(() => {
     import('./CELEncoder').then(module => {
       decoderRef.current = module;
+      setDecoderLoaded(true);
     });
   }, []);
 
   // Decode PCX data
   useEffect(() => {
-    if (!data || !decoderRef.current) return;
+    if (!data || !decoderRef.current || !decoderLoaded) return;
 
     try {
       const bytes = new Uint8Array(data);
@@ -1934,7 +2279,7 @@ export function PCXViewer({ data, filename }) {
       setError(err.message);
       setPcxData(null);
     }
-  }, [data]);
+  }, [data, decoderLoaded]);
 
   // Render image
   useEffect(() => {
