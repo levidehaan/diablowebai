@@ -16,6 +16,7 @@ import { ModToolExecutor } from './ModTools';
 import DUNParser from './DUNParser';
 import { MPQWriter } from './MPQWriter';
 import { MpqReader } from '../api/savefile';
+import { CampaignPackageLoader } from './CampaignPackage';
 import { LevelPreview, MiniMap } from './LevelPreview';
 import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
 import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, FileInfo, getFileType, getFileCategory } from './FileViewer';
@@ -87,10 +88,16 @@ export class ModEditor extends Component {
       // Download notice
       showDownloadNotice: false,
       downloadedFilename: null,
+
+      // Campaign Package (.dcpk) state
+      campaignPackage: null,
+      campaignName: null,
+      campaignDunFiles: null,  // Map of path -> DUN data
     };
 
     this.executor = new ModToolExecutor();
     this.fileInputRef = React.createRef();
+    this.campaignInputRef = React.createRef();
   }
 
   componentDidMount() {
@@ -292,11 +299,17 @@ export class ModEditor extends Component {
   }
 
   /**
-   * Handle MPQ file upload
+   * Handle file upload (MPQ or .dcpk)
    */
   handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
+
+    // Check if it's a campaign package
+    if (file.name.endsWith('.dcpk')) {
+      await this.handleCampaignPackageUpload(file);
+      return;
+    }
 
     this.setState({ status: 'loading', error: null });
     this.addOperation('loadMPQ', { file: file.name }, 'running');
@@ -308,6 +321,75 @@ export class ModEditor extends Component {
     } catch (error) {
       this.updateOperation('loadMPQ', 'error', error.message);
       this.setState({ status: 'error', error: error.message });
+    }
+  };
+
+  /**
+   * Handle campaign package (.dcpk) upload
+   */
+  handleCampaignPackageUpload = async (file) => {
+    this.setState({ status: 'loading', error: null, loadingMessage: 'Loading campaign package...' });
+    this.addOperation('loadCampaign', { file: file.name }, 'running');
+
+    try {
+      // Load the campaign package
+      const loader = new CampaignPackageLoader();
+      await loader.load(file);
+
+      // Get campaign data
+      const campaign = loader.package?.campaign;
+      if (!campaign) {
+        throw new Error('Invalid campaign package: missing campaign data');
+      }
+
+      // Get DUN files from the package
+      const dunFiles = loader.package?.dunFiles || new Map();
+
+      // Convert DUN base64 data to a format we can display
+      const dunFilesData = new Map();
+      for (const [path, base64Data] of dunFiles) {
+        try {
+          // Decode base64 to Uint8Array
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          // Parse DUN data
+          const dunData = DUNParser.parse(bytes);
+          dunFilesData.set(path, {
+            raw: bytes,
+            parsed: dunData,
+            stats: DUNParser.getStats(dunData),
+          });
+        } catch (err) {
+          console.warn(`[ModEditor] Failed to parse DUN file ${path}:`, err);
+        }
+      }
+
+      // Create a virtual file list from DUN files
+      const fileList = Array.from(dunFilesData.keys()).map(path => path);
+
+      this.setState({
+        campaignPackage: loader,
+        campaignName: campaign.name,
+        campaignDunFiles: dunFilesData,
+        fileList: fileList,
+        mpqLoaded: true,
+        mpqFileName: file.name,
+        status: 'ready',
+        loadingMessage: null,
+        error: null,
+      });
+
+      this.updateOperation('loadCampaign', 'success');
+      console.log(`[ModEditor] Loaded campaign "${campaign.name}" with ${dunFilesData.size} DUN files`);
+
+    } catch (error) {
+      this.updateOperation('loadCampaign', 'error', error.message);
+      this.setState({ status: 'error', error: error.message, loadingMessage: null });
+      console.error('[ModEditor] Failed to load campaign package:', error);
     }
   };
 
@@ -767,16 +849,16 @@ export class ModEditor extends Component {
             <input
               ref={this.fileInputRef}
               type="file"
-              accept=".mpq"
+              accept=".mpq,.dcpk"
               onChange={this.handleFileUpload}
               style={{ display: 'none' }}
             />
             <button
               onClick={() => this.fileInputRef.current.click()}
               className="btn btn-load"
-              title="Load a spawn.mpq or previously downloaded modded game"
+              title="Load an MPQ file or a Campaign Package (.dcpk)"
             >
-              Load MPQ from Disk
+              Load File
             </button>
             <button
               onClick={this.generateTestLevel}

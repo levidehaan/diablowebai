@@ -19,6 +19,7 @@ import CompressMpq from './mpqcmp';
 import { AIConfigPanel, loadSavedConfig, needsConfiguration, providerManager, CampaignManager, CharacterCreator } from './neural';
 import { AIGameSession, AIGameOverlay } from './neural/AIGameSession';
 import { ModEditor, ModEditorButton, MPQWriter, DUNParser, convertCampaign } from './neural';
+import { CampaignPackageLoader, injectCampaignIntoFilesystem } from './neural/CampaignPackage';
 import './neural/AIConfigPanel.scss';
 import './neural/CampaignManager.scss';
 import './neural/CharacterCreator.scss';
@@ -133,8 +134,11 @@ class App extends React.Component {
     showModEditor: false,
     modifiedMpq: null,
     modLoadFeedback: null,
+    // Campaign Package state (.dcpk)
+    loadedPackage: null,  // The CampaignPackageLoader instance
   };
   cursorPos = {x: 0, y: 0};
+  campaignFileInputRef = React.createRef();
 
   touchControls = false;
   touchButtons = [null, null, null, null, null, null, null, null, null, null];
@@ -300,6 +304,120 @@ class App extends React.Component {
   handleCharacterSaved = (characterData) => {
     console.log('[App] Character saved:', characterData.name);
     // Character is saved to IndexedDB, can be used in campaigns
+  }
+
+  // ========== Campaign Package (.dcpk) Methods ==========
+
+  /**
+   * Open file picker for .dcpk campaign package
+   */
+  openCampaignFilePicker = () => {
+    if (this.campaignFileInputRef.current) {
+      this.campaignFileInputRef.current.click();
+    }
+  }
+
+  /**
+   * Handle .dcpk file selection
+   */
+  handleCampaignFileSelect = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      this.setState({
+        modLoadFeedback: { status: 'loading', message: `Loading ${file.name}...` },
+      });
+
+      console.log('[App] Loading campaign package:', file.name);
+
+      // Load the campaign package
+      const loader = new CampaignPackageLoader();
+      await loader.load(file);
+
+      // Get campaign data
+      const campaign = loader.package?.campaign;
+      if (!campaign) {
+        throw new Error('Invalid campaign package: missing campaign data');
+      }
+
+      // Convert to playable format
+      const playableFormat = loader.toPlayableFormat();
+
+      // Store the loader for later use when starting the game
+      this.setState({
+        activeCampaign: campaign,
+        activeWorld: loader.package?.world || null,
+        loadedPackage: loader,
+        modLoadFeedback: { status: 'loaded', message: `Campaign "${campaign.name}" loaded!` },
+      });
+
+      console.log('[App] Campaign package loaded:', {
+        name: campaign.name,
+        dunFiles: loader.package?.dunFiles?.size || 0,
+      });
+
+      // Clear feedback after delay
+      setTimeout(() => {
+        this.setState({ modLoadFeedback: null });
+      }, 3000);
+
+    } catch (err) {
+      console.error('[App] Failed to load campaign package:', err);
+      this.setState({
+        modLoadFeedback: { status: 'error', message: err.message },
+      });
+    }
+
+    // Reset file input
+    event.target.value = '';
+  }
+
+  /**
+   * Play a loaded campaign package by injecting DUN files and starting game
+   */
+  playLoadedCampaignPackage = async () => {
+    const { loadedPackage, activeCampaign } = this.state;
+
+    if (!loadedPackage || !activeCampaign) {
+      console.warn('[App] No campaign package loaded');
+      // Fall back to legacy buildAndPlayCampaign if no package
+      if (activeCampaign) {
+        return this.buildAndPlayCampaign(activeCampaign);
+      }
+      return;
+    }
+
+    try {
+      this.setState({
+        modLoadFeedback: { status: 'building', message: 'Preparing campaign...' },
+      });
+
+      // Get the filesystem
+      const fs = await this.fs;
+
+      // Inject DUN files into filesystem
+      const injectedCount = injectCampaignIntoFilesystem(fs.files, loadedPackage);
+      console.log(`[App] Injected ${injectedCount} DUN files into filesystem`);
+
+      this.setState({
+        modLoadFeedback: { status: 'loading', message: 'Starting game...' },
+      });
+
+      // Start the game with shareware mode (DUN files are now injected)
+      this.start(null, { isModded: true });
+
+      // Clear feedback after delay
+      setTimeout(() => {
+        this.setState({ modLoadFeedback: null });
+      }, 2000);
+
+    } catch (err) {
+      console.error('[App] Failed to play campaign package:', err);
+      this.setState({
+        modLoadFeedback: { status: 'error', message: err.message },
+      });
+    }
   }
 
   // ========== Mod Editor and MPQ Swap Methods ==========
@@ -1138,15 +1256,25 @@ class App extends React.Component {
             </div>
           </div>
 
+          {/* Hidden file input for .dcpk campaign packages */}
+          <input
+            ref={this.campaignFileInputRef}
+            type="file"
+            accept=".dcpk"
+            style={{ display: 'none' }}
+            onChange={this.handleCampaignFileSelect}
+          />
+
           {/* Main Action - AI Campaign */}
           <div className="diablo-menu__primary">
             {activeCampaign ? (
-              <button className="diablo-btn diablo-btn--primary diablo-btn--glow" onClick={() => this.buildAndPlayCampaign(activeCampaign)}>
+              <button className="diablo-btn diablo-btn--primary diablo-btn--glow" onClick={this.playLoadedCampaignPackage}>
                 <FontAwesomeIcon icon={faFire} className="btn-icon" />
                 <span className="btn-text">
                   <span className="btn-label">ENTER THE DARKNESS</span>
                   <span className="btn-sub">{activeCampaign.name}</span>
                 </span>
+                {this.state.loadedPackage && <span className="diablo-badge diablo-badge--glow">DCPK</span>}
               </button>
             ) : (
               <button className="diablo-btn diablo-btn--primary" onClick={this.openCampaignManager}>
@@ -1173,6 +1301,11 @@ class App extends React.Component {
               </label>
               <input accept=".mpq" type="file" id="loadFile" style={{display: "none"}} onChange={this.parseFile}/>
             </form>
+
+            <button className="diablo-btn diablo-btn--secondary" onClick={this.openCampaignFilePicker}>
+              <FontAwesomeIcon icon={faFire} className="btn-icon" />
+              <span className="btn-text">Load Campaign</span>
+            </button>
 
             {activeCampaign && (
               <button className="diablo-btn diablo-btn--secondary" onClick={this.openCampaignManager}>
