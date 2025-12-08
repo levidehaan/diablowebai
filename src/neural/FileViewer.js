@@ -1573,6 +1573,24 @@ export function TILViewer({ data, filename }) {
         </div>
       </div>
 
+      {/* Legend explaining TIL format */}
+      <div className="til-viewer-legend">
+        <p>
+          <strong>TIL files</strong> define tiles for dungeon rendering. Each tile is composed of
+          <strong> 4 pillar references</strong> (frame indices into MIN/CEL files) arranged in a 2×2 grid:
+        </p>
+        <div className="til-legend-grid">
+          <span className="legend-cell">0: Top-Left</span>
+          <span className="legend-cell">1: Top-Right</span>
+          <span className="legend-cell">2: Bottom-Left</span>
+          <span className="legend-cell">3: Bottom-Right</span>
+        </div>
+        <p className="til-legend-note">
+          Colors represent frame indices - same color = same frame reference.
+          To see actual graphics, load the corresponding MIN/CEL files from the same level folder.
+        </p>
+      </div>
+
       {/* Grid View - Visual tile preview */}
       {viewMode === 'grid' && (
         <div className="til-viewer-grid" style={{ maxHeight: '400px', overflow: 'auto' }}>
@@ -1993,6 +2011,16 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
           <span>{currentFrameData.width}×{currentFrameData.height} px</span>
           <span>{currentFrameData.dataSize?.toLocaleString() || '?'} bytes</span>
           {customWidth > 0 && <span className="custom-width-indicator">(custom width)</span>}
+        </div>
+      )}
+
+      {/* Debug info for decoding issues */}
+      {currentFrameData && currentFrameData.indices && (
+        <div className="cel-debug-info">
+          <span>Pixels: {currentFrameData.indices.length.toLocaleString()}</span>
+          <span>Non-zero: {Array.from(currentFrameData.indices).filter(v => v !== 0).length.toLocaleString()}</span>
+          <span>Unique colors: {new Set(currentFrameData.indices).size}</span>
+          <span>Max index: {Math.max(...currentFrameData.indices)}</span>
         </div>
       )}
     </div>
