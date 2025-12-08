@@ -500,9 +500,11 @@ Respond with a JSON object containing:
 }`;
 
     try {
+      // Campaign JSON with 4 acts, multiple levels, bosses, quests needs ~8000+ tokens
+      // Previous 4000 caused truncation (finishReason: "length")
       const response = await provider.generateText(prompt, {
         temperature: 0.8,
-        maxTokens: 4000,
+        maxTokens: 8000,
       });
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -576,45 +578,18 @@ Respond with a JSON object containing:
 
   /**
    * Attempt to repair common JSON issues from AI responses
+   * Handles truncated responses (finishReason: "length") by properly closing structures
    */
-  repairJSON(jsonStr) {
+  repairJSON(jsonStr, isTruncated = false) {
     let repaired = jsonStr;
 
     try {
+      console.log('[CampaignGenerator] Attempting JSON repair, length:', jsonStr.length, 'truncated:', isTruncated);
+
       // Remove trailing commas before ] or }
       repaired = repaired.replace(/,(\s*[\]}])/g, '$1');
 
-      // Fix unescaped quotes in strings (common AI mistake)
-      // This is a simple heuristic - replace sequences like ": "text "word" more"
-      // Be careful not to break valid JSON
-
-      // Remove any text after the final closing brace
-      const lastBrace = repaired.lastIndexOf('}');
-      if (lastBrace !== -1 && lastBrace < repaired.length - 1) {
-        repaired = repaired.substring(0, lastBrace + 1);
-      }
-
-      // Try to balance braces if unbalanced
-      const openBraces = (repaired.match(/\{/g) || []).length;
-      const closeBraces = (repaired.match(/\}/g) || []).length;
-      if (openBraces > closeBraces) {
-        repaired += '}'.repeat(openBraces - closeBraces);
-      }
-
-      // Balance brackets
-      const openBrackets = (repaired.match(/\[/g) || []).length;
-      const closeBrackets = (repaired.match(/\]/g) || []).length;
-      if (openBrackets > closeBrackets) {
-        // Find where to insert closing brackets
-        const insertPos = repaired.lastIndexOf('}');
-        if (insertPos > 0) {
-          repaired = repaired.substring(0, insertPos) +
-            ']'.repeat(openBrackets - closeBrackets) +
-            repaired.substring(insertPos);
-        }
-      }
-
-      // Replace common problematic patterns
+      // Replace common problematic patterns first
       repaired = repaired
         // Fix "null or {" patterns (should just be null or the object)
         .replace(/"unlockCondition":\s*null\s+or\s+\{[^}]*\}/g, '"unlockCondition": null')
@@ -622,6 +597,105 @@ Respond with a JSON object containing:
         .replace(/\.{3,}/g, '...')
         // Remove control characters
         .replace(/[\x00-\x1F\x7F]/g, ' ');
+
+      // For truncated responses, we need to find a valid cut point
+      // Look for the last complete object/array structure
+      let lastValidPos = -1;
+      let braceCount = 0;
+      let bracketCount = 0;
+      let inString = false;
+      let escapeNext = false;
+
+      for (let i = 0; i < repaired.length; i++) {
+        const char = repaired[i];
+
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+
+        if (char === '\\' && inString) {
+          escapeNext = true;
+          continue;
+        }
+
+        if (char === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+
+        if (!inString) {
+          if (char === '{') braceCount++;
+          if (char === '}') {
+            braceCount--;
+            // Mark this as a potential valid endpoint after a complete object
+            if (braceCount >= 0 && bracketCount >= 0) {
+              lastValidPos = i;
+            }
+          }
+          if (char === '[') bracketCount++;
+          if (char === ']') {
+            bracketCount--;
+            if (braceCount >= 0 && bracketCount >= 0) {
+              lastValidPos = i;
+            }
+          }
+        }
+      }
+
+      // If we're in an unbalanced state (truncated), try to fix it
+      if (braceCount !== 0 || bracketCount !== 0 || inString) {
+        console.log('[CampaignGenerator] JSON is unbalanced - braces:', braceCount, 'brackets:', bracketCount, 'inString:', inString);
+
+        // If we ended in a string, close it
+        if (inString) {
+          // Find where we need to truncate - before the incomplete string value
+          const lastQuote = repaired.lastIndexOf('"');
+          const lastColon = repaired.lastIndexOf(':');
+          if (lastColon > lastQuote - 50) {
+            // We're likely in a value that got cut off, remove this property
+            const lastComma = repaired.lastIndexOf(',', lastColon);
+            if (lastComma > 0) {
+              repaired = repaired.substring(0, lastComma);
+            }
+          } else {
+            repaired = repaired.substring(0, lastQuote) + '"';
+          }
+        }
+
+        // Remove any trailing incomplete structures
+        // Look for incomplete property (ends with : or partial value)
+        repaired = repaired.replace(/,?\s*"[^"]*":\s*(?:"[^"]*)?$/g, '');
+        repaired = repaired.replace(/,?\s*"[^"]*":\s*\[?\s*$/g, '');
+        repaired = repaired.replace(/,?\s*"[^"]*":\s*\{?\s*$/g, '');
+
+        // Remove trailing commas
+        repaired = repaired.replace(/,\s*$/g, '');
+
+        // Recount braces/brackets after cleanup
+        const openBraces = (repaired.match(/\{/g) || []).length;
+        const closeBraces = (repaired.match(/\}/g) || []).length;
+        const openBrackets = (repaired.match(/\[/g) || []).length;
+        const closeBrackets = (repaired.match(/\]/g) || []).length;
+
+        // Close any open brackets first (they're usually nested inside objects)
+        if (openBrackets > closeBrackets) {
+          repaired += ']'.repeat(openBrackets - closeBrackets);
+        }
+
+        // Then close open braces
+        if (openBraces > closeBraces) {
+          repaired += '}'.repeat(openBraces - closeBraces);
+        }
+
+        console.log('[CampaignGenerator] Repaired JSON, new length:', repaired.length);
+      } else {
+        // JSON seems balanced, just clean up trailing text
+        const lastBrace = repaired.lastIndexOf('}');
+        if (lastBrace !== -1 && lastBrace < repaired.length - 1) {
+          repaired = repaired.substring(0, lastBrace + 1);
+        }
+      }
 
       return repaired;
     } catch (e) {

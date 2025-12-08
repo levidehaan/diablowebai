@@ -94,32 +94,120 @@ function TemplateSelector({ onSelect, selectedTemplate }) {
 }
 
 /**
- * Generation Progress component
+ * Generation Progress component - Enhanced with detailed status
  */
-function GenerationProgress({ stage, progress }) {
-  const stages = ['Generating Campaign', 'Building World', 'Creating Levels', 'Finalizing'];
-  const currentIndex = stages.indexOf(stage);
+function GenerationProgress({ stage, progress, details }) {
+  const stages = [
+    { name: 'Generating Campaign', description: 'AI is creating the story, acts, and quests' },
+    { name: 'Building World', description: 'Creating dungeon layouts and locations' },
+    { name: 'Creating Levels', description: 'Generating spawn areas and objectives' },
+    { name: 'Finalizing', description: 'Saving campaign data' },
+  ];
+  const currentIndex = stages.findIndex(s => s.name === stage);
+
+  // Format elapsed time
+  const formatTime = (ms) => {
+    if (!ms) return '0s';
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+  };
 
   return (
-    <div className="generation-progress">
-      <div className="generation-progress__spinner"></div>
-      <h3 className="generation-progress__stage">{stage}</h3>
-      <div className="generation-progress__bar">
-        <div
-          className="generation-progress__fill"
-          style={{ width: `${progress}%` }}
-        ></div>
+    <div className="generation-progress generation-progress--detailed">
+      {/* Main status */}
+      <div className="generation-progress__header">
+        <div className="generation-progress__spinner"></div>
+        <div className="generation-progress__title">
+          <h3 className="generation-progress__stage">{stage}</h3>
+          <p className="generation-progress__description">
+            {stages[currentIndex]?.description || 'Processing...'}
+          </p>
+        </div>
       </div>
+
+      {/* Progress bar */}
+      <div className="generation-progress__bar-container">
+        <div className="generation-progress__bar">
+          <div
+            className="generation-progress__fill"
+            style={{ width: `${progress}%` }}
+          ></div>
+        </div>
+        <span className="generation-progress__percent">{progress}%</span>
+      </div>
+
+      {/* Detailed status info */}
+      {details && (
+        <div className="generation-progress__details">
+          {details.currentTask && (
+            <div className="detail-row">
+              <span className="detail-label">Current Task:</span>
+              <span className="detail-value">{details.currentTask}</span>
+            </div>
+          )}
+          {details.aiStatus && (
+            <div className="detail-row detail-row--ai">
+              <span className="detail-label">AI Status:</span>
+              <span className={`detail-value ai-status--${details.aiStatus.status || 'idle'}`}>
+                {details.aiStatus.status === 'calling' && '⏳ Calling AI...'}
+                {details.aiStatus.status === 'streaming' && '📡 Receiving response...'}
+                {details.aiStatus.status === 'complete' && '✅ Response received'}
+                {details.aiStatus.status === 'retrying' && `🔄 Retrying (attempt ${details.aiStatus.attempt || 1})...`}
+                {details.aiStatus.status === 'error' && `❌ Error: ${details.aiStatus.error || 'Unknown'}`}
+                {!details.aiStatus.status && 'Ready'}
+              </span>
+            </div>
+          )}
+          {details.elapsed !== undefined && (
+            <div className="detail-row">
+              <span className="detail-label">Elapsed:</span>
+              <span className="detail-value">{formatTime(details.elapsed)}</span>
+            </div>
+          )}
+          {details.tokensUsed !== undefined && (
+            <div className="detail-row">
+              <span className="detail-label">Tokens Used:</span>
+              <span className="detail-value">{details.tokensUsed.toLocaleString()}</span>
+            </div>
+          )}
+          {details.message && (
+            <div className="detail-row detail-row--message">
+              <span className="detail-value">{details.message}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Steps */}
       <div className="generation-progress__steps">
         {stages.map((s, i) => (
-          <span
-            key={s}
+          <div
+            key={s.name}
             className={`step ${i < currentIndex ? 'step--done' : ''} ${i === currentIndex ? 'step--active' : ''}`}
           >
-            {s}
-          </span>
+            <span className="step__icon">
+              {i < currentIndex ? '✓' : i === currentIndex ? '●' : '○'}
+            </span>
+            <span className="step__name">{s.name}</span>
+          </div>
         ))}
       </div>
+
+      {/* Recent log entries */}
+      {details?.logs && details.logs.length > 0 && (
+        <div className="generation-progress__logs">
+          <h4>Build Log</h4>
+          <div className="logs-scroll">
+            {details.logs.slice(-8).map((log, i) => (
+              <div key={i} className={`log-entry log-entry--${log.level || 'info'}`}>
+                <span className="log-time">{formatTime(log.elapsed || 0)}</span>
+                <span className="log-message">{log.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -214,34 +302,100 @@ export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
     setView('generating');
     setError(null);
 
+    const startTime = Date.now();
+    const logs = [];
+
+    // Helper to add log and update progress
+    const updateProgress = (stage, progress, details = {}) => {
+      const elapsed = Date.now() - startTime;
+      if (details.message) {
+        logs.push({ level: details.level || 'info', message: details.message, elapsed });
+      }
+      setGenerationProgress({
+        stage,
+        progress,
+        details: {
+          ...details,
+          elapsed,
+          logs: [...logs],
+        },
+      });
+    };
+
     try {
-      // Stage 1: Generate campaign
-      setGenerationProgress({ stage: 'Generating Campaign', progress: 10 });
+      // Stage 1: Generate campaign with AI
+      updateProgress('Generating Campaign', 5, {
+        message: 'Starting campaign generation...',
+        currentTask: 'Initializing AI provider',
+        aiStatus: { status: 'calling' },
+      });
 
       const options = {
         seed: Date.now(),
         customTheme: customOptions.customTheme || undefined,
       };
 
+      updateProgress('Generating Campaign', 10, {
+        message: `Using template: ${selectedTemplate}`,
+        currentTask: 'Requesting campaign structure from AI',
+        aiStatus: { status: 'calling' },
+      });
+
+      // This is where the AI call happens
       const campaign = await campaignGenerator.generateCampaign(selectedTemplate, options);
 
       if (customOptions.name) {
         campaign.name = customOptions.name;
       }
 
-      setGenerationProgress({ stage: 'Building World', progress: 40 });
+      updateProgress('Generating Campaign', 35, {
+        message: `Campaign "${campaign.name}" generated with ${campaign.acts?.length || 0} acts`,
+        currentTask: 'Campaign structure complete',
+        aiStatus: { status: 'complete' },
+        level: 'success',
+      });
 
       // Stage 2: Build world
+      updateProgress('Building World', 40, {
+        message: 'Building world from campaign data...',
+        currentTask: 'Creating dungeon layouts',
+      });
+
       const world = await worldBuilder.buildWorld(campaign);
 
-      setGenerationProgress({ stage: 'Creating Levels', progress: 70 });
+      updateProgress('Building World', 60, {
+        message: `World built with ${Object.keys(world?.levels || {}).length} levels`,
+        currentTask: 'World generation complete',
+        level: 'success',
+      });
 
-      // Stage 3: Save to storage
+      // Stage 3: Create levels
+      updateProgress('Creating Levels', 70, {
+        message: 'Generating spawn areas and objectives...',
+        currentTask: 'Processing level data',
+      });
+
+      updateProgress('Creating Levels', 85, {
+        message: 'Level configurations complete',
+        currentTask: 'Preparing to save',
+        level: 'success',
+      });
+
+      // Stage 4: Save to storage
+      updateProgress('Finalizing', 90, {
+        message: 'Saving campaign to storage...',
+        currentTask: 'Writing to IndexedDB',
+      });
+
       await GameStorage.saveGameState(campaign, world.export(), campaignGenerator.getProgress());
 
-      setGenerationProgress({ stage: 'Finalizing', progress: 100 });
+      updateProgress('Finalizing', 100, {
+        message: 'Campaign saved successfully!',
+        currentTask: 'Complete',
+        level: 'success',
+      });
 
-      // Notify parent
+      // Notify parent after brief delay to show 100%
       setTimeout(() => {
         onCampaignReady({
           campaign,
@@ -252,8 +406,13 @@ export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
 
     } catch (err) {
       console.error('Campaign generation failed:', err);
+      updateProgress(generationProgress.stage, generationProgress.progress, {
+        message: `Error: ${err.message}`,
+        aiStatus: { status: 'error', error: err.message },
+        level: 'error',
+      });
       setError(`Failed to generate campaign: ${err.message}`);
-      setView('create');
+      setTimeout(() => setView('create'), 2000);
     }
   };
 
@@ -395,6 +554,7 @@ export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
         <GenerationProgress
           stage={generationProgress.stage}
           progress={generationProgress.progress}
+          details={generationProgress.details}
         />
       ) : (
         <>
