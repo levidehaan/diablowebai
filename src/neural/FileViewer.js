@@ -1834,20 +1834,20 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
         firstOpaqueRGBA: firstOpaqueIdx >= 0 ? Array.from(imageData.data.slice(firstOpaqueIdx, firstOpaqueIdx + 4)) : 'none',
       });
 
-      // Use a temp canvas to properly composite the sprite with transparency
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.putImageData(imageData, 0, 0);
+      // Put image data directly onto the canvas
+      ctx.putImageData(imageData, 0, 0);
 
-      // Draw sprite on top of checkerboard (preserves transparency)
-      ctx.drawImage(tempCanvas, 0, 0);
+      // Debug: draw colored markers to prove render code ran
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(0, 0, 10, 10);  // Red top-left
+      ctx.fillStyle = '#00ff00';
+      ctx.fillRect(width - 10, 0, 10, 10);  // Green top-right
+      ctx.fillStyle = '#0000ff';
+      ctx.fillRect(0, height - 10, 10, 10);  // Blue bottom-left
+      ctx.fillStyle = '#ffff00';
+      ctx.fillRect(width - 10, height - 10, 10, 10);  // Yellow bottom-right
 
-      // Debug: draw a red border around the sprite area to verify canvas is visible
-      ctx.strokeStyle = '#f00';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(1, 1, width - 2, height - 2);
+      console.log('[CEL Render] Drew to canvas', { width, height, canvasWidth: canvas.width, canvasHeight: canvas.height });
     } catch (err) {
       console.error('CEL render error:', err);
       ctx.fillStyle = '#f00';
@@ -2596,6 +2596,8 @@ export default {
   SOLViewer,
   MINViewer,
   TILViewer,
+  CELViewer,
+  CL2Viewer,
   FileInfo,
   CELViewer,
   CL2Viewer,
