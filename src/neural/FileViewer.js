@@ -1728,6 +1728,7 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
       const bytes = new Uint8Array(data);
       const decoded = decoderRef.current.decodeCELFull(bytes, {
         palette: externalPalette || decoderRef.current.DIABLO_FULL_PALETTE,
+        filename: filename || '',
       });
       setCelData(decoded);
       setCurrentFrame(0);
@@ -1737,7 +1738,7 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
       setError(err.message);
       setCelData(null);
     }
-  }, [data, externalPalette, decoderLoaded]);
+  }, [data, externalPalette, decoderLoaded, filename]);
 
   // Animation loop
   useEffect(() => {
@@ -1972,6 +1973,7 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
       const bytes = new Uint8Array(data);
       const decoded = decoderRef.current.decodeCL2(bytes, {
         palette: externalPalette || decoderRef.current.DIABLO_FULL_PALETTE,
+        filename: filename || '',
       });
 
       if (decoded.type === 'cel') {
@@ -1988,7 +1990,7 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
       setError(err.message);
       setCl2Data(null);
     }
-  }, [data, externalPalette, decoderLoaded]);
+  }, [data, externalPalette, decoderLoaded, filename]);
 
   // Get current frames
   const getCurrentFrames = useCallback(() => {

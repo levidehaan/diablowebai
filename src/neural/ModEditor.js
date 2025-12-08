@@ -418,7 +418,9 @@ export class ModEditor extends Component {
    * Handle dedicated campaign file upload
    */
   handleCampaignFileSelect = () => {
-    this.campaignInputRef.current?.click();
+    if (this.campaignInputRef.current) {
+      this.campaignInputRef.current.click();
+    }
   };
 
   handleCampaignFileChange = async (event) => {
