@@ -20,6 +20,7 @@ import { CampaignPackageLoader } from './CampaignPackage';
 import { LevelPreview, MiniMap } from './LevelPreview';
 import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
 import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, FileInfo, CELViewer, CL2Viewer, PCXViewer, getFileType, getFileCategory } from './FileViewer';
+import { CampaignBlueprint } from './CampaignBlueprint';
 
 // Spawn.mpq valid sizes
 const SpawnSizes = [50274091, 25830791];
@@ -93,11 +94,13 @@ export class ModEditor extends Component {
       campaignPackage: null,
       campaignName: null,
       campaignDunFiles: null,  // Map of path -> DUN data
+      loadedCampaignBlueprint: null, // Campaign blueprint loaded from .dcpk
     };
 
     this.executor = new ModToolExecutor();
     this.fileInputRef = React.createRef();
     this.campaignInputRef = React.createRef();
+    this.blueprintPanelRef = React.createRef();
   }
 
   componentDidMount() {
@@ -343,12 +346,15 @@ export class ModEditor extends Component {
       }
 
       // Get DUN files from the package
-      const dunFiles = loader.package?.dunFiles || new Map();
+      const dunFiles = loader.package?.dunFiles || {};
 
       // Convert DUN base64 data to a format we can display
       const dunFilesData = new Map();
-      for (const [path, base64Data] of dunFiles) {
+      for (const [levelId, dunInfo] of Object.entries(dunFiles)) {
         try {
+          const path = dunInfo.path;
+          const base64Data = dunInfo.data;
+
           // Decode base64 to Uint8Array
           const binaryString = atob(base64Data);
           const bytes = new Uint8Array(binaryString.length);
@@ -364,17 +370,27 @@ export class ModEditor extends Component {
             stats: DUNParser.getStats(dunData),
           });
         } catch (err) {
-          console.warn(`[ModEditor] Failed to parse DUN file ${path}:`, err);
+          console.warn(`[ModEditor] Failed to parse DUN file ${levelId}:`, err);
         }
       }
 
       // Create a virtual file list from DUN files
-      const fileList = Array.from(dunFilesData.keys()).map(path => path);
+      const fileList = Array.from(dunFilesData.keys());
+
+      // Convert campaign data to CampaignBlueprint for the editor
+      let loadedBlueprint = null;
+      try {
+        loadedBlueprint = CampaignBlueprint.import(campaign);
+        console.log(`[ModEditor] Created blueprint from campaign: ${loadedBlueprint.name}`);
+      } catch (err) {
+        console.warn('[ModEditor] Could not create blueprint from campaign:', err);
+      }
 
       this.setState({
         campaignPackage: loader,
         campaignName: campaign.name,
         campaignDunFiles: dunFilesData,
+        loadedCampaignBlueprint: loadedBlueprint,
         fileList: fileList,
         mpqLoaded: true,
         mpqFileName: file.name,
@@ -382,6 +398,11 @@ export class ModEditor extends Component {
         loadingMessage: null,
         error: null,
       });
+
+      // If we have an executor, set the blueprint there too
+      if (this.executor && loadedBlueprint) {
+        this.executor.setCampaignBlueprint(loadedBlueprint);
+      }
 
       this.updateOperation('loadCampaign', 'success');
       console.log(`[ModEditor] Loaded campaign "${campaign.name}" with ${dunFilesData.size} DUN files`);
@@ -391,6 +412,25 @@ export class ModEditor extends Component {
       this.setState({ status: 'error', error: error.message, loadingMessage: null });
       console.error('[ModEditor] Failed to load campaign package:', error);
     }
+  };
+
+  /**
+   * Handle dedicated campaign file upload
+   */
+  handleCampaignFileSelect = () => {
+    this.campaignInputRef.current?.click();
+  };
+
+  handleCampaignFileChange = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.dcpk')) {
+      this.setState({ error: 'Please select a .dcpk campaign package file' });
+      return;
+    }
+
+    await this.handleCampaignPackageUpload(file);
   };
 
   /**
@@ -849,16 +889,30 @@ export class ModEditor extends Component {
             <input
               ref={this.fileInputRef}
               type="file"
-              accept=".mpq,.dcpk"
+              accept=".mpq"
               onChange={this.handleFileUpload}
+              style={{ display: 'none' }}
+            />
+            <input
+              ref={this.campaignInputRef}
+              type="file"
+              accept=".dcpk"
+              onChange={this.handleCampaignFileChange}
               style={{ display: 'none' }}
             />
             <button
               onClick={() => this.fileInputRef.current.click()}
               className="btn btn-load"
-              title="Load an MPQ file or a Campaign Package (.dcpk)"
+              title="Load an MPQ file"
             >
-              Load File
+              Load MPQ
+            </button>
+            <button
+              onClick={this.handleCampaignFileSelect}
+              className="btn btn-campaign"
+              title="Load a Campaign Package (.dcpk) and populate the Blueprint Editor"
+            >
+              Load Campaign
             </button>
             <button
               onClick={this.generateTestLevel}
@@ -1362,12 +1416,20 @@ export class ModEditor extends Component {
         </div>
 
         {/* Campaign Blueprint Panel (collapsible) */}
-        <details className="campaign-blueprint-section" open>
-          <summary>Campaign Blueprint Editor</summary>
+        <details className="campaign-blueprint-section" open={!!this.state.loadedCampaignBlueprint}>
+          <summary>
+            Campaign Blueprint Editor
+            {this.state.campaignName && (
+              <span className="campaign-loaded-badge"> - {this.state.campaignName}</span>
+            )}
+          </summary>
           <CampaignBlueprintPanel
+            ref={this.blueprintPanelRef}
             executor={this.executor}
+            initialBlueprint={this.state.loadedCampaignBlueprint}
             onBlueprintChange={(blueprint) => {
               console.log('[ModEditor] Blueprint changed:', blueprint?.id);
+              this.setState({ loadedCampaignBlueprint: blueprint });
             }}
             onBuildComplete={(result) => {
               console.log('[ModEditor] Build complete:', result);

@@ -319,6 +319,60 @@ export class CampaignBlueprint {
   }
 
   /**
+   * Import blueprint (alias for fromJSON, also handles .dcpk campaign format)
+   * @param {Object} data - Blueprint data or .dcpk campaign data
+   */
+  static import(data) {
+    // Handle .dcpk campaign format (from CampaignPackage)
+    if (data.acts && !data.story) {
+      // Convert .dcpk campaign to blueprint format
+      return CampaignBlueprint.fromCampaignPackage(data);
+    }
+    // Handle export format (from toJSON/export)
+    return new CampaignBlueprint(data);
+  }
+
+  /**
+   * Create blueprint from .dcpk campaign package format
+   */
+  static fromCampaignPackage(packageCampaign) {
+    const config = {
+      id: packageCampaign.id || `campaign_${Date.now()}`,
+      name: packageCampaign.name || 'Imported Campaign',
+      settings: packageCampaign.settings || {},
+      story: {
+        title: packageCampaign.name || 'Imported Campaign',
+        description: packageCampaign.description || '',
+        template: packageCampaign.template || 'custom',
+        acts: (packageCampaign.acts || []).map((act, i) => ({
+          id: act.id || `act_${i + 1}`,
+          number: i + 1,
+          title: act.name || `Act ${i + 1}`,
+          theme: act.theme || 'cathedral',
+          chapters: (act.levels || []).map((level, j) => ({
+            id: level.id || `ch_${j + 1}`,
+            number: j + 1,
+            title: level.name || `Level ${j + 1}`,
+            description: '',
+          })),
+        })),
+      },
+      quests: {
+        main: (packageCampaign.quests || []).filter(q => q.type === 'main'),
+        side: (packageCampaign.quests || []).filter(q => q.type !== 'main'),
+      },
+    };
+    return new CampaignBlueprint(config);
+  }
+
+  /**
+   * Export blueprint for serialization
+   */
+  export() {
+    return this.toJSON();
+  }
+
+  /**
    * Get summary for AI prompts
    */
   getSummary() {

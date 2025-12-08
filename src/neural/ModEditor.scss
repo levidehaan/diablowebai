@@ -140,6 +140,18 @@
       }
     }
 
+    &.btn-campaign {
+      background: #2a3a2a;
+      border-color: #4a6a4a;
+      color: #afa;
+
+      &:hover:not(:disabled) {
+        background: #3a4a3a;
+        border-color: #6a8a6a;
+        color: #cfc;
+      }
+    }
+
     &.btn-small {
       padding: 4px 8px;
       font-size: 11px;
@@ -553,6 +565,13 @@
 
     &:hover {
       background: #2a2a50;
+    }
+
+    .campaign-loaded-badge {
+      color: #8f8;
+      font-weight: normal;
+      font-size: 12px;
+      margin-left: 8px;
     }
   }
 

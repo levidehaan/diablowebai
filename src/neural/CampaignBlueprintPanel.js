@@ -54,9 +54,29 @@ export class CampaignBlueprintPanel extends Component {
   }
 
   componentDidMount() {
-    // Check if executor already has a blueprint
-    if (this.props.executor?.campaignBlueprint) {
+    // Check if initialBlueprint prop is provided
+    if (this.props.initialBlueprint) {
+      this.setState({ blueprint: this.props.initialBlueprint });
+      if (this.props.executor) {
+        this.props.executor.setCampaignBlueprint(this.props.initialBlueprint);
+      }
+    }
+    // Otherwise check if executor already has a blueprint
+    else if (this.props.executor?.campaignBlueprint) {
       this.setState({ blueprint: this.props.executor.campaignBlueprint });
+    }
+  }
+
+  componentDidUpdate(prevProps) {
+    // Handle initialBlueprint prop changes (e.g., when loading a .dcpk)
+    if (this.props.initialBlueprint !== prevProps.initialBlueprint && this.props.initialBlueprint) {
+      this.setState({ blueprint: this.props.initialBlueprint });
+      if (this.props.executor) {
+        this.props.executor.setCampaignBlueprint(this.props.initialBlueprint);
+      }
+      if (this.props.onBlueprintChange) {
+        this.props.onBlueprintChange(this.props.initialBlueprint);
+      }
     }
   }
 
