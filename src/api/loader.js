@@ -4,6 +4,7 @@ import load_spawn from './load_spawn';
 import webrtc_open from './webrtc';
 import { gameEventEmitter } from '../neural/GameEventEmitter';
 import neuralGameController from '../neural/NeuralGameController';
+import { CampaignPackageLoader, injectCampaignIntoFilesystem } from '../neural/CampaignPackage';
 
 // Track the game worker for neural integration
 let gameWorker = null;
@@ -219,4 +220,58 @@ export async function loadCampaignForPlay(campaign) {
     return true;
   }
   return false;
+}
+
+/**
+ * Load a campaign package (.dcpk file) and prepare it for play
+ * @param {File|Blob|ArrayBuffer} packageSource - The campaign package file
+ * @param {Object} api - Game API with filesystem access
+ * @returns {Promise<Object>} The loaded campaign data
+ */
+export async function loadCampaignPackageForPlay(packageSource, api) {
+  console.log('[Loader] Loading campaign package...');
+
+  // Load the package
+  const loader = new CampaignPackageLoader();
+  const packageData = await loader.load(packageSource);
+
+  console.log('[Loader] Package loaded:', {
+    campaign: packageData.campaign?.name,
+    dunFiles: packageData.dunFiles?.size || 0,
+  });
+
+  // Inject DUN files into the filesystem if available
+  if (api?.fs) {
+    const fs = await api.fs;
+    if (fs.files) {
+      const injectedCount = injectCampaignIntoFilesystem(fs.files, loader);
+      console.log(`[Loader] Injected ${injectedCount} DUN files into filesystem`);
+    }
+  }
+
+  // Convert to playable format and load into neural controller
+  const playableFormat = loader.toPlayableFormat();
+
+  if (neuralGameController) {
+    await neuralGameController.loadCampaign(playableFormat);
+    console.log('[Loader] Campaign loaded into NeuralGameController');
+  }
+
+  return {
+    campaign: packageData.campaign,
+    world: packageData.world,
+    triggers: packageData.triggers,
+    dunFiles: packageData.dunFiles,
+    playableFormat,
+  };
+}
+
+/**
+ * Check if a campaign package is valid
+ * @param {File|Blob} file - The file to check
+ * @returns {boolean} True if file appears to be a valid campaign package
+ */
+export function isCampaignPackage(file) {
+  if (!file || !file.name) return false;
+  return file.name.toLowerCase().endsWith('.dcpk');
 }
