@@ -1708,7 +1708,12 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
   const [error, setError] = useState(null);
   const [showGrid, setShowGrid] = useState(false);
   const [decoderLoaded, setDecoderLoaded] = useState(false);
+  const [customWidth, setCustomWidth] = useState(0); // 0 = auto-detect
+  const [widthInput, setWidthInput] = useState('');
   const animationRef = useRef(null);
+
+  // Common Diablo sprite widths for quick selection
+  const COMMON_WIDTHS = [28, 32, 56, 64, 96, 128, 160];
 
   // Import decoder lazily
   const decoderRef = useRef(null);
@@ -1729,16 +1734,22 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
       const decoded = decoderRef.current.decodeCELFull(bytes, {
         palette: externalPalette || decoderRef.current.DIABLO_FULL_PALETTE,
         filename: filename || '',
+        frameWidth: customWidth,
       });
       setCelData(decoded);
       setCurrentFrame(0);
       setError(null);
+
+      // Update width input to show detected/current width
+      if (decoded.frames.length > 0 && !customWidth) {
+        setWidthInput(String(decoded.frames[0].width));
+      }
     } catch (err) {
       console.error('CEL decode error:', err);
       setError(err.message);
       setCelData(null);
     }
-  }, [data, externalPalette, decoderLoaded, filename]);
+  }, [data, externalPalette, decoderLoaded, filename, customWidth]);
 
   // Animation loop
   useEffect(() => {
@@ -1805,6 +1816,26 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
       }
     }
   }, [celData, currentFrame, zoom, showGrid, externalPalette]);
+
+  const handleWidthChange = (newWidth) => {
+    const w = parseInt(newWidth, 10);
+    if (w > 0 && w <= 512) {
+      setCustomWidth(w);
+      setWidthInput(String(w));
+    }
+  };
+
+  const handleWidthInputSubmit = () => {
+    const w = parseInt(widthInput, 10);
+    if (w > 0 && w <= 512) {
+      setCustomWidth(w);
+    }
+  };
+
+  const resetToAutoDetect = () => {
+    setCustomWidth(0);
+    setWidthInput('');
+  };
 
   if (error) {
     return (
@@ -1904,6 +1935,36 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
         </div>
       </div>
 
+      {/* Dimension controls */}
+      <div className="cel-dimension-controls">
+        <label>Width:</label>
+        <div className="width-presets">
+          {COMMON_WIDTHS.map(w => (
+            <button
+              key={w}
+              className={`preset-btn ${customWidth === w ? 'active' : ''}`}
+              onClick={() => handleWidthChange(w)}
+              title={`Set width to ${w}px`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+        <div className="width-custom">
+          <input
+            type="number"
+            min="1"
+            max="512"
+            value={widthInput}
+            onChange={(e) => setWidthInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleWidthInputSubmit()}
+            placeholder="Custom"
+          />
+          <button onClick={handleWidthInputSubmit} title="Apply custom width">✓</button>
+          <button onClick={resetToAutoDetect} title="Reset to auto-detect">↺</button>
+        </div>
+      </div>
+
       <div className="cel-viewer-canvas-container">
         <canvas ref={canvasRef} className="cel-viewer-canvas" />
       </div>
@@ -1931,6 +1992,7 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
           <span>Frame {currentFrame + 1}:</span>
           <span>{currentFrameData.width}×{currentFrameData.height} px</span>
           <span>{currentFrameData.dataSize?.toLocaleString() || '?'} bytes</span>
+          {customWidth > 0 && <span className="custom-width-indicator">(custom width)</span>}
         </div>
       )}
     </div>
