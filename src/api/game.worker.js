@@ -379,9 +379,12 @@ async function initWasm(spawn, progress) {
     }
   };
 
-  const result = await (spawn ? SpawnModule : DiabloModule)(moduleConfig).ready;
+  // Create the module and wait for it to be ready
+  // IMPORTANT: .ready resolves to undefined, so we must return the module object itself
+  const module = (spawn ? SpawnModule : DiabloModule)(moduleConfig);
+  await module.ready;
   progress({loaded: 2000000});
-  return result;
+  return module;
 }
 
 async function init_game(mpq, spawn, offscreen) {
