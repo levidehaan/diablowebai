@@ -2596,6 +2596,8 @@ export default {
   SOLViewer,
   MINViewer,
   TILViewer,
+  CELViewer,
+  CL2Viewer,
   FileInfo,
   CELViewer,
   CL2Viewer,
