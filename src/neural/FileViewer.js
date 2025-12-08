@@ -1817,6 +1817,13 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
       const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
       const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
 
+      console.log('[CEL Viewer] ImageData created:', {
+        width: imageData.width,
+        height: imageData.height,
+        dataLength: imageData.data.length,
+        sampleRGBA: Array.from(imageData.data.slice(0, 16)),
+      });
+
       // Use a temp canvas to properly composite the sprite with transparency
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = width;
@@ -1826,6 +1833,11 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
 
       // Draw sprite on top of checkerboard (preserves transparency)
       ctx.drawImage(tempCanvas, 0, 0);
+
+      // Debug: draw a red border around the sprite area to verify canvas is visible
+      ctx.strokeStyle = '#f00';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, width - 2, height - 2);
     } catch (err) {
       console.error('CEL render error:', err);
       ctx.fillStyle = '#f00';
@@ -2045,6 +2057,34 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
           <span>Non-zero: {Array.from(currentFrameData.indices).filter(v => v !== 0).length.toLocaleString()}</span>
           <span>Unique colors: {new Set(currentFrameData.indices).size}</span>
           <span>Max index: {Math.max(...currentFrameData.indices)}</span>
+          <button
+            onClick={() => {
+              // Draw test pattern directly to canvas
+              const canvas = canvasRef.current;
+              if (canvas) {
+                const ctx = canvas.getContext('2d');
+                const w = canvas.width;
+                const h = canvas.height;
+                // Draw a visible test pattern
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(0, 0, w/2, h/2);
+                ctx.fillStyle = '#00ff00';
+                ctx.fillRect(w/2, 0, w/2, h/2);
+                ctx.fillStyle = '#0000ff';
+                ctx.fillRect(0, h/2, w/2, h/2);
+                ctx.fillStyle = '#ffff00';
+                ctx.fillRect(w/2, h/2, w/2, h/2);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '14px sans-serif';
+                ctx.fillText('TEST', w/2 - 20, h/2);
+                console.log('[CEL Test] Drew test pattern to canvas', {w, h});
+              }
+            }}
+            style={{marginLeft: '8px', padding: '2px 6px', fontSize: '11px'}}
+            title="Draw a test pattern to verify canvas visibility"
+          >
+            Test Canvas
+          </button>
         </div>
       )}
     </div>
