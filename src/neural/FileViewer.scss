@@ -1397,3 +1397,127 @@
     }
   }
 }
+
+// ============================================
+// PCX VIEWER (Legacy Image Files)
+// ============================================
+
+.pcx-viewer {
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+
+  &-loading, &-error {
+    padding: 40px 20px;
+    text-align: center;
+    color: #888;
+
+    .loading-spinner, .error-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+
+    .error-message {
+      color: #f66;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .error-detail {
+      color: #888;
+      font-size: 11px;
+    }
+  }
+
+  &-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #252540;
+    border-bottom: 1px solid #333;
+
+    .pcx-filename {
+      color: #a9a;
+      font-weight: bold;
+    }
+
+    .pcx-info {
+      color: #888;
+      font-size: 11px;
+    }
+  }
+
+  &-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 10px 12px;
+    background: #1f1f35;
+    border-bottom: 1px solid #333;
+    align-items: center;
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #888;
+      font-size: 11px;
+
+      label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+      }
+    }
+
+    select {
+      padding: 4px 8px;
+      background: #333;
+      border: 1px solid #444;
+      color: #ccc;
+      border-radius: 3px;
+    }
+
+    input[type="checkbox"] {
+      accent-color: #a9a;
+    }
+  }
+
+  &-canvas-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    background: #111;
+    min-height: 150px;
+    overflow: auto;
+  }
+
+  &-canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 1px solid #333;
+  }
+
+  .pcx-info-panel {
+    padding: 12px;
+    background: #1f1f35;
+    border-top: 1px solid #333;
+
+    .info-row {
+      display: flex;
+      gap: 12px;
+      padding: 4px 0;
+      font-size: 11px;
+      color: #aaa;
+
+      .info-label {
+        color: #a9a;
+        min-width: 100px;
+      }
+    }
+  }
+}
