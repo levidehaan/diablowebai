@@ -13,6 +13,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import campaignGenerator, { CAMPAIGN_TEMPLATES } from './CampaignGenerator';
 import worldBuilder from './WorldBuilder';
 import GameStorage from './GameStorage';
+import { CampaignPackageBuilder, CampaignPackageLoader, downloadCampaignPackage } from './CampaignPackage';
 import './CampaignManager.scss';
 
 /**
@@ -369,17 +370,28 @@ export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
         level: 'success',
       });
 
-      // Stage 3: Create levels
+      // Stage 3: Create campaign package with DUN files
       updateProgress('Creating Levels', 70, {
-        message: 'Generating spawn areas and objectives...',
-        currentTask: 'Processing level data',
+        message: 'Generating DUN files for all levels...',
+        currentTask: 'Building campaign package',
       });
 
+      // Build the campaign package with proper DUN files
+      const packageBuilder = new CampaignPackageBuilder();
+      const packageBlob = await packageBuilder.build(campaign, world);
+      const packageResults = packageBuilder.getResults();
+
       updateProgress('Creating Levels', 85, {
-        message: 'Level configurations complete',
-        currentTask: 'Preparing to save',
-        level: 'success',
+        message: `Package created with ${packageResults.dunCount} DUN files`,
+        currentTask: packageResults.errors.length > 0 ?
+          `Completed with ${packageResults.errors.length} errors` : 'Package complete',
+        level: packageResults.errors.length > 0 ? 'warning' : 'success',
       });
+
+      // Log any warnings
+      if (packageResults.warnings.length > 0) {
+        console.warn('[CampaignManager] Package warnings:', packageResults.warnings);
+      }
 
       // Stage 4: Save to storage
       updateProgress('Finalizing', 90, {
@@ -389,8 +401,26 @@ export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
 
       await GameStorage.saveGameState(campaign, world.export(), campaignGenerator.getProgress());
 
+      // Also download the campaign package for the user
+      updateProgress('Finalizing', 95, {
+        message: 'Downloading campaign package...',
+        currentTask: 'Creating .dcpk file',
+      });
+
+      // Trigger package download
+      const safeName = (campaign?.name || 'campaign').replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `${safeName}-${Date.now()}.dcpk`;
+      const url = URL.createObjectURL(packageBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
       updateProgress('Finalizing', 100, {
-        message: 'Campaign saved successfully!',
+        message: `Campaign saved! Package: ${filename}`,
         currentTask: 'Complete',
         level: 'success',
       });
@@ -452,7 +482,24 @@ export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
 
   const handleExportCampaign = async (campaignId) => {
     try {
-      await GameStorage.exporter.exportToFile(campaignId);
+      // Load the campaign and world data
+      const gameState = await GameStorage.loadGameState(campaignId);
+      if (!gameState) {
+        throw new Error('Campaign not found');
+      }
+
+      // Restore world builder state to get proper world object
+      if (gameState.world) {
+        worldBuilder.import(gameState.world);
+      }
+
+      // Build and download campaign package
+      const results = await downloadCampaignPackage(
+        gameState.campaign,
+        worldBuilder.getWorld()
+      );
+
+      console.log('[CampaignManager] Export complete:', results);
     } catch (err) {
       console.error('Export failed:', err);
       setError(`Export failed: ${err.message}`);
@@ -482,15 +529,52 @@ export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
 
     try {
       setError(null);
-      const campaign = await GameStorage.importer.importFromFile(file);
-      await loadSavedCampaigns();
-      await loadStorageStats();
 
-      // Reset file input
-      event.target.value = '';
+      // Check if it's a .dcpk file
+      if (file.name.endsWith('.dcpk')) {
+        // Load campaign package
+        const loader = new CampaignPackageLoader();
+        const packageData = await loader.load(file);
 
-      // Show success message
-      alert(`Campaign "${campaign.name}" imported successfully!`);
+        // Save to GameStorage
+        const campaign = packageData.campaign;
+        if (!campaign) {
+          throw new Error('Invalid campaign package: missing campaign data');
+        }
+
+        // Import world data if available
+        if (packageData.world) {
+          worldBuilder.import(packageData.world);
+        }
+
+        // Save to storage
+        await GameStorage.saveGameState(
+          campaign,
+          packageData.world,
+          { completed: true }
+        );
+
+        await loadSavedCampaigns();
+        await loadStorageStats();
+
+        // Reset file input
+        event.target.value = '';
+
+        // Show success message with DUN file count
+        const dunCount = packageData.dunFiles?.size || 0;
+        alert(`Campaign "${campaign.name}" imported successfully!\nIncludes ${dunCount} DUN level files.`);
+      } else {
+        // Legacy JSON import
+        const campaign = await GameStorage.importer.importFromFile(file);
+        await loadSavedCampaigns();
+        await loadStorageStats();
+
+        // Reset file input
+        event.target.value = '';
+
+        // Show success message
+        alert(`Campaign "${campaign.name}" imported successfully!`);
+      }
     } catch (err) {
       console.error('Import failed:', err);
       setError(`Import failed: ${err.message}`);
@@ -582,7 +666,7 @@ export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".json,.json.gz"
+                  accept=".json,.json.gz,.dcpk"
                   style={{ display: 'none' }}
                   onChange={handleFileImport}
                 />
