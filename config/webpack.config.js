@@ -318,7 +318,7 @@ module.exports = function(webpackEnv) {
         },
         {
           test: /\.jscc$/,
-          loader: "exports-loader",
+          loader: "exports-loader?Diablo",
         },
         // First, run the linter.
         // It's important to do this before Babel processes the JS.
