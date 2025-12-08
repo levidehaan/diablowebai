@@ -374,7 +374,7 @@ class App extends React.Component {
   }
 
   /**
-   * Play a loaded campaign package by injecting DUN files and starting game
+   * Play a loaded campaign package by using embedded MPQ or injecting DUN files
    */
   playLoadedCampaignPackage = async () => {
     const { loadedPackage, activeCampaign } = this.state;
@@ -389,12 +389,43 @@ class App extends React.Component {
     }
 
     try {
+      // Get the filesystem
+      const fs = await this.fs;
+
+      // Check if package has embedded MPQ
+      if (loadedPackage.hasMPQ()) {
+        this.setState({
+          modLoadFeedback: { status: 'building', message: 'Extracting campaign MPQ...' },
+        });
+
+        // Extract and use the embedded MPQ
+        const mpqData = loadedPackage.getMPQ();
+        if (mpqData) {
+          console.log(`[App] Using embedded MPQ from package: ${mpqData.length} bytes`);
+
+          // Swap the MPQ in filesystem
+          fs.files.set('spawn.mpq', mpqData);
+
+          // Store for mod editor access
+          this.setState({
+            modifiedMpq: mpqData,
+            modLoadFeedback: { status: 'loading', message: 'Starting campaign...' },
+          });
+
+          // Start the game
+          this.start(null, { isModded: true });
+
+          setTimeout(() => {
+            this.setState({ modLoadFeedback: null });
+          }, 2000);
+          return;
+        }
+      }
+
+      // No embedded MPQ - just inject DUN files and use base spawn.mpq
       this.setState({
         modLoadFeedback: { status: 'building', message: 'Preparing campaign...' },
       });
-
-      // Get the filesystem
-      const fs = await this.fs;
 
       // Inject DUN files into filesystem
       const injectedCount = injectCampaignIntoFilesystem(fs.files, loadedPackage);
