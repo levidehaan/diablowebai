@@ -1355,6 +1355,552 @@ export function FileInfo({ data, filename }) {
   );
 }
 
+/**
+ * CELViewer - Display CEL sprite files with animation
+ */
+export function CELViewer({ data, filename, palette: externalPalette }) {
+  const canvasRef = useRef(null);
+  const [celData, setCelData] = useState(null);
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [zoom, setZoom] = useState(2);
+  const [fps, setFps] = useState(10);
+  const [error, setError] = useState(null);
+  const [showGrid, setShowGrid] = useState(false);
+  const animationRef = useRef(null);
+
+  // Import decoder lazily
+  const decoderRef = useRef(null);
+
+  useEffect(() => {
+    import('./CELEncoder').then(module => {
+      decoderRef.current = module;
+    });
+  }, []);
+
+  // Decode CEL data
+  useEffect(() => {
+    if (!data || !decoderRef.current) return;
+
+    try {
+      const bytes = new Uint8Array(data);
+      const decoded = decoderRef.current.decodeCELFull(bytes, {
+        palette: externalPalette || decoderRef.current.DIABLO_FULL_PALETTE,
+      });
+      setCelData(decoded);
+      setCurrentFrame(0);
+      setError(null);
+    } catch (err) {
+      console.error('CEL decode error:', err);
+      setError(err.message);
+      setCelData(null);
+    }
+  }, [data, externalPalette]);
+
+  // Animation loop
+  useEffect(() => {
+    if (!isPlaying || !celData || celData.frames.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentFrame(prev => (prev + 1) % celData.frames.length);
+    }, 1000 / fps);
+
+    animationRef.current = interval;
+    return () => clearInterval(interval);
+  }, [isPlaying, celData, fps]);
+
+  // Render current frame
+  useEffect(() => {
+    if (!celData || !canvasRef.current || !decoderRef.current) return;
+
+    const frame = celData.frames[currentFrame];
+    if (!frame) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    const width = frame.width * zoom;
+    const height = frame.height * zoom;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    // Clear with transparency pattern
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw checkerboard for transparency
+    const checkSize = 8;
+    ctx.fillStyle = '#252540';
+    for (let y = 0; y < height; y += checkSize * 2) {
+      for (let x = 0; x < width; x += checkSize * 2) {
+        ctx.fillRect(x, y, checkSize, checkSize);
+        ctx.fillRect(x + checkSize, y + checkSize, checkSize, checkSize);
+      }
+    }
+
+    // Render sprite
+    const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
+    const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
+    ctx.putImageData(imageData, 0, 0);
+
+    // Draw grid if enabled
+    if (showGrid && zoom >= 2) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= frame.width; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * zoom, 0);
+        ctx.lineTo(x * zoom, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= frame.height; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * zoom);
+        ctx.lineTo(width, y * zoom);
+        ctx.stroke();
+      }
+    }
+  }, [celData, currentFrame, zoom, showGrid, externalPalette]);
+
+  if (error) {
+    return (
+      <div className="cel-viewer cel-viewer-error">
+        <div className="error-icon">⚠️</div>
+        <div className="error-message">Failed to decode CEL file</div>
+        <div className="error-detail">{error}</div>
+      </div>
+    );
+  }
+
+  if (!celData) {
+    return (
+      <div className="cel-viewer cel-viewer-loading">
+        <div className="loading-spinner">⏳</div>
+        <div>Decoding sprite...</div>
+      </div>
+    );
+  }
+
+  const currentFrameData = celData.frames[currentFrame];
+
+  return (
+    <div className="cel-viewer">
+      <div className="cel-viewer-header">
+        <span className="cel-filename">{filename.split('/').pop()}</span>
+        <span className="cel-info">
+          {celData.frameCount} frame{celData.frameCount !== 1 ? 's' : ''} |
+          {currentFrameData ? ` ${currentFrameData.width}×${currentFrameData.height}` : ''}
+        </span>
+      </div>
+
+      <div className="cel-viewer-controls">
+        <div className="control-group">
+          <button
+            className={`control-btn ${isPlaying ? 'active' : ''}`}
+            onClick={() => setIsPlaying(!isPlaying)}
+            disabled={celData.frames.length <= 1}
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+          <button
+            className="control-btn"
+            onClick={() => setCurrentFrame(prev => Math.max(0, prev - 1))}
+            disabled={currentFrame === 0}
+            title="Previous frame"
+          >
+            ◀
+          </button>
+          <span className="frame-counter">
+            {currentFrame + 1} / {celData.frameCount}
+          </span>
+          <button
+            className="control-btn"
+            onClick={() => setCurrentFrame(prev => Math.min(celData.frames.length - 1, prev + 1))}
+            disabled={currentFrame >= celData.frames.length - 1}
+            title="Next frame"
+          >
+            ▶
+          </button>
+        </div>
+
+        <div className="control-group">
+          <label>FPS:</label>
+          <input
+            type="range"
+            min="1"
+            max="30"
+            value={fps}
+            onChange={(e) => setFps(Number(e.target.value))}
+          />
+          <span>{fps}</span>
+        </div>
+
+        <div className="control-group">
+          <label>Zoom:</label>
+          <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))}>
+            <option value={1}>1x</option>
+            <option value={2}>2x</option>
+            <option value={3}>3x</option>
+            <option value={4}>4x</option>
+            <option value={6}>6x</option>
+            <option value={8}>8x</option>
+          </select>
+        </div>
+
+        <div className="control-group">
+          <label>
+            <input
+              type="checkbox"
+              checked={showGrid}
+              onChange={(e) => setShowGrid(e.target.checked)}
+            />
+            Grid
+          </label>
+        </div>
+      </div>
+
+      <div className="cel-viewer-canvas-container">
+        <canvas ref={canvasRef} className="cel-viewer-canvas" />
+      </div>
+
+      {celData.frames.length > 1 && (
+        <div className="cel-frame-strip">
+          {celData.frames.map((frame, idx) => (
+            <div
+              key={idx}
+              className={`frame-thumb ${idx === currentFrame ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentFrame(idx);
+                setIsPlaying(false);
+              }}
+              title={`Frame ${idx + 1}`}
+            >
+              {idx + 1}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {currentFrameData && (
+        <div className="cel-frame-info">
+          <span>Frame {currentFrame + 1}:</span>
+          <span>{currentFrameData.width}×{currentFrameData.height} px</span>
+          <span>{currentFrameData.dataSize?.toLocaleString() || '?'} bytes</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * CL2Viewer - Display CL2 animation files with 8 directions
+ */
+export function CL2Viewer({ data, filename, palette: externalPalette }) {
+  const canvasRef = useRef(null);
+  const [cl2Data, setCl2Data] = useState(null);
+  const [currentDirection, setCurrentDirection] = useState(0);
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [zoom, setZoom] = useState(2);
+  const [fps, setFps] = useState(10);
+  const [error, setError] = useState(null);
+  const [showAllDirections, setShowAllDirections] = useState(false);
+  const animationRef = useRef(null);
+
+  const decoderRef = useRef(null);
+
+  const DIRECTION_NAMES = ['S', 'SW', 'W', 'NW', 'N', 'NE', 'E', 'SE'];
+  const DIRECTION_ARROWS = ['↓', '↙', '←', '↖', '↑', '↗', '→', '↘'];
+
+  useEffect(() => {
+    import('./CELEncoder').then(module => {
+      decoderRef.current = module;
+    });
+  }, []);
+
+  // Decode CL2 data
+  useEffect(() => {
+    if (!data || !decoderRef.current) return;
+
+    try {
+      const bytes = new Uint8Array(data);
+      const decoded = decoderRef.current.decodeCL2(bytes, {
+        palette: externalPalette || decoderRef.current.DIABLO_FULL_PALETTE,
+      });
+
+      if (decoded.type === 'cel') {
+        // Fallback to CEL format
+        setCl2Data({ ...decoded.data, isCEL: true });
+      } else {
+        setCl2Data(decoded);
+      }
+      setCurrentFrame(0);
+      setCurrentDirection(0);
+      setError(null);
+    } catch (err) {
+      console.error('CL2 decode error:', err);
+      setError(err.message);
+      setCl2Data(null);
+    }
+  }, [data, externalPalette]);
+
+  // Get current frames
+  const getCurrentFrames = useCallback(() => {
+    if (!cl2Data) return [];
+    if (cl2Data.isCEL) return cl2Data.frames;
+    const dir = cl2Data.directions[currentDirection];
+    return dir?.frames || [];
+  }, [cl2Data, currentDirection]);
+
+  // Animation loop
+  useEffect(() => {
+    if (!isPlaying || !cl2Data) return;
+
+    const frames = getCurrentFrames();
+    if (frames.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentFrame(prev => (prev + 1) % frames.length);
+    }, 1000 / fps);
+
+    animationRef.current = interval;
+    return () => clearInterval(interval);
+  }, [isPlaying, cl2Data, fps, getCurrentFrames]);
+
+  // Render current frame(s)
+  useEffect(() => {
+    if (!cl2Data || !canvasRef.current || !decoderRef.current) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
+
+    if (showAllDirections && !cl2Data.isCEL) {
+      // Show all 8 directions in a grid
+      const directions = cl2Data.directions.filter(d => d.frames.length > 0);
+      if (directions.length === 0) return;
+
+      const sampleFrame = directions[0].frames[0];
+      const frameW = sampleFrame.width * zoom;
+      const frameH = sampleFrame.height * zoom;
+
+      // 3x3 grid layout for 8 directions + center
+      canvas.width = frameW * 3 + 8;
+      canvas.height = frameH * 3 + 8;
+
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Direction positions in 3x3 grid: N, NE, E, SE, S, SW, W, NW
+      const positions = [
+        { dir: 4, x: 1, y: 0 },  // N
+        { dir: 5, x: 2, y: 0 },  // NE
+        { dir: 6, x: 2, y: 1 },  // E
+        { dir: 7, x: 2, y: 2 },  // SE
+        { dir: 0, x: 1, y: 2 },  // S
+        { dir: 1, x: 0, y: 2 },  // SW
+        { dir: 2, x: 0, y: 1 },  // W
+        { dir: 3, x: 0, y: 0 },  // NW
+      ];
+
+      positions.forEach(({ dir, x, y }) => {
+        const direction = cl2Data.directions[dir];
+        if (!direction || direction.frames.length === 0) return;
+
+        const frameIdx = Math.min(currentFrame, direction.frames.length - 1);
+        const frame = direction.frames[frameIdx];
+        if (!frame) return;
+
+        const px = x * (frameW + 4);
+        const py = y * (frameH + 4);
+
+        // Draw border for current direction
+        if (dir === currentDirection) {
+          ctx.strokeStyle = '#4a9';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(px - 1, py - 1, frameW + 2, frameH + 2);
+        }
+
+        const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
+        ctx.putImageData(imageData, px, py);
+      });
+
+    } else {
+      // Show single direction
+      const frames = getCurrentFrames();
+      const frame = frames[currentFrame];
+      if (!frame) return;
+
+      const width = frame.width * zoom;
+      const height = frame.height * zoom;
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // Transparency pattern
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, width, height);
+
+      const checkSize = 8;
+      ctx.fillStyle = '#252540';
+      for (let y = 0; y < height; y += checkSize * 2) {
+        for (let x = 0; x < width; x += checkSize * 2) {
+          ctx.fillRect(x, y, checkSize, checkSize);
+          ctx.fillRect(x + checkSize, y + checkSize, checkSize, checkSize);
+        }
+      }
+
+      const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
+      ctx.putImageData(imageData, 0, 0);
+    }
+  }, [cl2Data, currentDirection, currentFrame, zoom, showAllDirections, externalPalette, getCurrentFrames]);
+
+  if (error) {
+    return (
+      <div className="cl2-viewer cl2-viewer-error">
+        <div className="error-icon">⚠️</div>
+        <div className="error-message">Failed to decode CL2 file</div>
+        <div className="error-detail">{error}</div>
+      </div>
+    );
+  }
+
+  if (!cl2Data) {
+    return (
+      <div className="cl2-viewer cl2-viewer-loading">
+        <div className="loading-spinner">⏳</div>
+        <div>Decoding animation...</div>
+      </div>
+    );
+  }
+
+  const currentFrames = getCurrentFrames();
+  const currentFrameData = currentFrames[currentFrame];
+
+  return (
+    <div className="cl2-viewer">
+      <div className="cl2-viewer-header">
+        <span className="cl2-filename">{filename.split('/').pop()}</span>
+        <span className="cl2-info">
+          {cl2Data.isCEL ? (
+            <>CEL: {cl2Data.frameCount} frames</>
+          ) : (
+            <>CL2: 8 directions, {currentFrames.length} frames</>
+          )}
+          {currentFrameData && ` | ${currentFrameData.width}×${currentFrameData.height}`}
+        </span>
+      </div>
+
+      {!cl2Data.isCEL && (
+        <div className="cl2-direction-selector">
+          <span className="direction-label">Direction:</span>
+          <div className="direction-grid">
+            {DIRECTION_ARROWS.map((arrow, idx) => (
+              <button
+                key={idx}
+                className={`direction-btn ${idx === currentDirection ? 'active' : ''}`}
+                onClick={() => {
+                  setCurrentDirection(idx);
+                  setCurrentFrame(0);
+                }}
+                title={DIRECTION_NAMES[idx]}
+              >
+                {arrow}
+              </button>
+            ))}
+          </div>
+          <span className="direction-name">{DIRECTION_NAMES[currentDirection]}</span>
+
+          <label className="show-all-toggle">
+            <input
+              type="checkbox"
+              checked={showAllDirections}
+              onChange={(e) => setShowAllDirections(e.target.checked)}
+            />
+            Show all
+          </label>
+        </div>
+      )}
+
+      <div className="cl2-viewer-controls">
+        <div className="control-group">
+          <button
+            className={`control-btn ${isPlaying ? 'active' : ''}`}
+            onClick={() => setIsPlaying(!isPlaying)}
+            disabled={currentFrames.length <= 1}
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+          <button
+            className="control-btn"
+            onClick={() => setCurrentFrame(prev => Math.max(0, prev - 1))}
+            disabled={currentFrame === 0}
+          >
+            ◀
+          </button>
+          <span className="frame-counter">
+            {currentFrame + 1} / {currentFrames.length}
+          </span>
+          <button
+            className="control-btn"
+            onClick={() => setCurrentFrame(prev => Math.min(currentFrames.length - 1, prev + 1))}
+            disabled={currentFrame >= currentFrames.length - 1}
+          >
+            ▶
+          </button>
+        </div>
+
+        <div className="control-group">
+          <label>FPS:</label>
+          <input
+            type="range"
+            min="1"
+            max="30"
+            value={fps}
+            onChange={(e) => setFps(Number(e.target.value))}
+          />
+          <span>{fps}</span>
+        </div>
+
+        <div className="control-group">
+          <label>Zoom:</label>
+          <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))}>
+            <option value={1}>1x</option>
+            <option value={2}>2x</option>
+            <option value={3}>3x</option>
+            <option value={4}>4x</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="cl2-viewer-canvas-container">
+        <canvas ref={canvasRef} className="cl2-viewer-canvas" />
+      </div>
+
+      {currentFrames.length > 1 && (
+        <div className="cl2-frame-strip">
+          {currentFrames.map((frame, idx) => (
+            <div
+              key={idx}
+              className={`frame-thumb ${idx === currentFrame ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentFrame(idx);
+                setIsPlaying(false);
+              }}
+              title={`Frame ${idx + 1}`}
+            >
+              {idx + 1}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default {
   HexViewer,
   PaletteViewer,
@@ -1363,6 +1909,8 @@ export default {
   MINViewer,
   TILViewer,
   FileInfo,
+  CELViewer,
+  CL2Viewer,
   getFileType,
   getFileCategory
 };
