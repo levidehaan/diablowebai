@@ -793,50 +793,139 @@ function detectSpriteDimensions(pixelCount, filename = '') {
 }
 
 /**
- * Try to detect frame header in CEL data
- * Some Diablo CEL files have a 10-byte header per frame with dimensions
+ * Detect CEL/CL2 frame header
+ *
+ * Frame headers contain 5 WORDs (10 bytes):
+ * - First WORD is always 0x000A (10) - the header size itself
+ * - Each subsequent WORD is an offset to a 32-pixel-row block
+ *
+ * Width is calculated from: pixels_in_chunk / 32 (since each block is 32 rows)
  *
  * @param {Uint8Array} frameData - Frame data
- * @returns {{hasHeader: boolean, width: number, height: number, dataOffset: number}}
+ * @param {number} totalPixelCount - Optional: total pixels decoded (for width calc)
+ * @returns {{hasHeader: boolean, width: number, dataOffset: number, chunkOffsets: number[]}}
  */
 function detectFrameHeader(frameData) {
   if (frameData.length < 10) {
-    return { hasHeader: false, width: 0, height: 0, dataOffset: 0 };
+    return { hasHeader: false, width: 0, dataOffset: 0, chunkOffsets: [] };
   }
 
   const view = new DataView(frameData.buffer, frameData.byteOffset, frameData.byteLength);
 
-  // Check for frame header marker (typically 0x0A or 10)
-  const headerSize = view.getUint16(0, true);
+  // Check for frame header marker - first WORD should be 0x000A (10)
+  const firstWord = view.getUint16(0, true);
 
-  // Frame header format: [header_size(2), width(2), height(2), padding(4)]
-  if (headerSize === 10 || headerSize === 0x0A00) {
-    const width = view.getUint16(2, true);
-    const height = view.getUint16(4, true);
+  if (firstWord === 0x000A) {
+    // Valid frame header - read all 5 chunk offsets
+    const chunkOffsets = [];
+    for (let i = 0; i < 5; i++) {
+      chunkOffsets.push(view.getUint16(i * 2, true));
+    }
 
-    // Validate dimensions are reasonable
-    if (width > 0 && width <= 512 && height > 0 && height <= 512) {
-      return { hasHeader: true, width, height, dataOffset: 10 };
+    // The header itself is 10 bytes, data starts after
+    return { hasHeader: true, width: 0, dataOffset: 10, chunkOffsets };
+  }
+
+  return { hasHeader: false, width: 0, dataOffset: 0, chunkOffsets: [] };
+}
+
+/**
+ * Decode CEL RLE data (Regular CEL encoding)
+ *
+ * CEL RLE encoding:
+ * - 0x00: Skip (end marker in some variants)
+ * - 0x01-0x7E: N literal palette indices follow
+ * - 0x7F: 127 literal palette indices follow (row continues)
+ * - 0x80: 128 transparent pixels (row continues)
+ * - 0x81-0xFF: (256 - N) transparent pixels
+ *
+ * @param {Uint8Array} rleData - RLE encoded data
+ * @returns {number[]} Decoded pixel array (palette indices)
+ */
+function decodeCELRLE(rleData) {
+  const pixels = [];
+  let i = 0;
+
+  while (i < rleData.length) {
+    const cmd = rleData[i++];
+
+    if (cmd === 0) {
+      // Some CEL variants use 0 as end marker, skip it
+      continue;
+    }
+
+    if (cmd >= 0x81) {
+      // Transparent pixels: (256 - cmd) transparent pixels
+      const count = 256 - cmd;
+      for (let j = 0; j < count; j++) {
+        pixels.push(0);
+      }
+    } else if (cmd === 0x80) {
+      // 128 transparent pixels
+      for (let j = 0; j < 128; j++) {
+        pixels.push(0);
+      }
+    } else if (cmd === 0x7F) {
+      // 127 opaque pixels follow
+      for (let j = 0; j < 127 && i < rleData.length; j++) {
+        pixels.push(rleData[i++]);
+      }
+    } else {
+      // 0x01-0x7E: cmd literal pixels follow
+      for (let j = 0; j < cmd && i < rleData.length; j++) {
+        pixels.push(rleData[i++]);
+      }
     }
   }
 
-  // Some CEL files have a different header with width first
-  const maybeWidth = view.getUint16(0, true);
-  const maybeHeight = view.getUint16(2, true);
+  return pixels;
+}
 
-  // Check if these look like valid dimensions
-  if (maybeWidth >= 8 && maybeWidth <= 256 && maybeHeight >= 8 && maybeHeight <= 256) {
-    // Check if the remaining data size makes sense for these dimensions
-    const expectedPixels = maybeWidth * maybeHeight;
-    const remainingBytes = frameData.length - 4;
+/**
+ * Decode CL2 RLE data (CL2 has DIFFERENT encoding than CEL!)
+ *
+ * CL2 RLE encoding:
+ * - 0x00: Invalid/skip
+ * - 0x01-0x7F: N transparent pixels (NO data follows - just skip N pixels)
+ * - 0x80-0xBE: Fill (191 - N) pixels with ONE color that follows
+ * - 0xBF-0xFF: (256 - N) literal palette indices follow
+ *
+ * @param {Uint8Array} rleData - RLE encoded data
+ * @returns {number[]} Decoded pixel array (palette indices)
+ */
+function decodeCL2RLE(rleData) {
+  const pixels = [];
+  let i = 0;
 
-    // RLE typically compresses to less than original, but not extremely so
-    if (remainingBytes > expectedPixels * 0.1 && remainingBytes < expectedPixels * 2) {
-      return { hasHeader: true, width: maybeWidth, height: maybeHeight, dataOffset: 4 };
+  while (i < rleData.length) {
+    const cmd = rleData[i++];
+
+    if (cmd === 0) {
+      continue; // Skip invalid
+    }
+
+    if (cmd >= 0x01 && cmd <= 0x7F) {
+      // Transparent run: cmd transparent pixels
+      for (let j = 0; j < cmd; j++) {
+        pixels.push(0);
+      }
+    } else if (cmd >= 0x80 && cmd <= 0xBE) {
+      // Fill run: (191 - cmd) pixels of one color
+      const count = 191 - cmd;
+      const color = i < rleData.length ? rleData[i++] : 0;
+      for (let j = 0; j < count; j++) {
+        pixels.push(color);
+      }
+    } else {
+      // 0xBF-0xFF: (256 - cmd) literal pixels follow
+      const count = 256 - cmd;
+      for (let j = 0; j < count && i < rleData.length; j++) {
+        pixels.push(rleData[i++]);
+      }
     }
   }
 
-  return { hasHeader: false, width: 0, height: 0, dataOffset: 0 };
+  return pixels;
 }
 
 /**
@@ -847,87 +936,54 @@ function detectFrameHeader(frameData) {
  * @param {Uint8Array} frameData - RLE encoded frame data
  * @param {number} expectedWidth - Expected width (0 for auto-detect from pixel count)
  * @param {string} filename - Optional filename for dimension hints
+ * @param {boolean} isCL2 - If true, use CL2 RLE encoding
  * @returns {{indices: Uint8Array, width: number, height: number, rows: number[][]}}
  */
-function decodeRLEFrame(frameData, expectedWidth = 0, filename = '') {
-  // Try to detect frame header with dimensions
+function decodeRLEFrame(frameData, expectedWidth = 0, filename = '', isCL2 = false) {
+  // Try to detect frame header
   const header = detectFrameHeader(frameData);
   let rleData = frameData;
-  let headerWidth = expectedWidth;
-  let headerHeight = 0;
+  let hasFrameHeader = false;
 
-  if (header.hasHeader && expectedWidth === 0) {
-    headerWidth = header.width;
-    headerHeight = header.height;
+  if (header.hasHeader) {
     rleData = frameData.slice(header.dataOffset);
+    hasFrameHeader = true;
   }
 
-  // First pass: decode ALL pixels into a flat array
-  // Diablo CEL files don't use row markers - pixels are stored sequentially
-  const allPixels = [];
-  let i = 0;
-
-  while (i < rleData.length) {
-    const cmd = rleData[i++];
-
-    if (cmd === 0) {
-      // Some CEL variants use 0 as end marker, but we just skip it
-      continue;
-    }
-
-    if (cmd >= 0x81) {
-      // Transparent pixels: (256 - cmd) transparent pixels
-      const count = 256 - cmd;
-      for (let j = 0; j < count; j++) {
-        allPixels.push(0);
-      }
-    } else if (cmd === 0x80) {
-      // 128 transparent pixels
-      for (let j = 0; j < 128; j++) {
-        allPixels.push(0);
-      }
-    } else if (cmd === 0x7F) {
-      // 127 opaque pixels follow
-      for (let j = 0; j < 127 && i < rleData.length; j++) {
-        allPixels.push(rleData[i++]);
-      }
-    } else if (cmd > 0 && cmd <= 0x7E) {
-      // Opaque pixels: cmd pixels follow
-      for (let j = 0; j < cmd && i < rleData.length; j++) {
-        allPixels.push(rleData[i++]);
-      }
-    }
-  }
-
+  // Decode pixels using appropriate RLE decoder
+  const allPixels = isCL2 ? decodeCL2RLE(rleData) : decodeCELRLE(rleData);
   const totalPixels = allPixels.length;
 
-  // Determine dimensions - prioritize header values, then expected width, then heuristics
-  let width, height;
+  // If we have a frame header with chunk offsets, we can calculate width
+  // Width = total pixels in a chunk / 32 rows per chunk
+  let width = expectedWidth;
+  let height = 0;
 
-  if (headerWidth > 0 && headerHeight > 0) {
-    // Use dimensions from frame header
-    width = headerWidth;
-    height = headerHeight;
-  } else if (headerWidth > 0) {
-    // Use width from header, calculate height
-    width = headerWidth;
-    height = Math.ceil(totalPixels / width);
-  } else if (expectedWidth > 0) {
-    // Use provided width
-    width = expectedWidth;
-    height = Math.ceil(totalPixels / width);
-  } else {
+  if (width <= 0 && hasFrameHeader && header.chunkOffsets.length >= 2) {
+    // Calculate pixels between chunks to infer width
+    // Each chunk contains 32 rows, so if we know total pixels and chunks:
+    // width = total_pixels / (num_chunks * 32)
+    const numChunks = header.chunkOffsets.length;
+    const estimatedHeight = numChunks * 32;
+    if (totalPixels > 0 && totalPixels % estimatedHeight === 0) {
+      width = totalPixels / estimatedHeight;
+    }
+  }
+
+  if (width <= 0) {
     // Auto-detect dimensions from pixel count using heuristics
     const dims = detectSpriteDimensions(totalPixels, filename);
     width = dims.width;
     height = dims.height;
+  } else {
+    height = Math.ceil(totalPixels / width);
   }
 
   // Create indices array with proper dimensions
   const indices = new Uint8Array(width * height);
 
-  // CEL frames are stored bottom-up, so we need to flip vertically
-  // Fill row by row from the decoded pixels, then flip
+  // CEL/CL2 frames are stored bottom-up (from bottom-left to top-right)
+  // so we need to flip vertically when converting to standard top-down order
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const srcIdx = y * width + x;
@@ -948,7 +1004,7 @@ function decodeRLEFrame(frameData, expectedWidth = 0, filename = '') {
     rows.push(row);
   }
 
-  return { indices, width, height, rows };
+  return { indices, width, height, rows, hasFrameHeader };
 }
 
 /**
@@ -1014,7 +1070,49 @@ export function decodeCELFull(celData, options = {}) {
 }
 
 /**
- * Decode CL2 file (8 directions, each with multiple frames)
+ * Detect if a CL2 file is multi-group (8 directions) or mono-group
+ * @param {Uint8Array} cl2Data - CL2 file data
+ * @returns {{isMultiGroup: boolean, groupCount: number}}
+ */
+function detectCL2Type(cl2Data) {
+  if (cl2Data.length < 32) {
+    return { isMultiGroup: false, groupCount: 1 };
+  }
+
+  const view = new DataView(cl2Data.buffer, cl2Data.byteOffset, cl2Data.byteLength);
+
+  // Multi-group CL2 files have 8 direction offsets at the start
+  // Each offset should be >= 32 (size of direction offset table) and < file size
+  // And they should be in increasing order
+  const offsets = [];
+  for (let i = 0; i < 8; i++) {
+    offsets.push(view.getUint32(i * 4, true));
+  }
+
+  // Check if this looks like a multi-group header
+  // First offset should be 32 (right after the 8 DWORD header)
+  // All offsets should be valid and in increasing order
+  const looksLikeMultiGroup =
+    offsets[0] === 32 &&
+    offsets.every((o, i) => o >= 32 && o < cl2Data.length && (i === 0 || o >= offsets[i - 1]));
+
+  if (looksLikeMultiGroup) {
+    return { isMultiGroup: true, groupCount: 8 };
+  }
+
+  // Check if first DWORD looks like a frame count (mono-group format)
+  // Mono-group has: [frameCount, offset0, offset1, ..., offsetN, endOffset]
+  const firstDword = view.getUint32(0, true);
+  if (firstDword > 0 && firstDword < 1000) {
+    // Reasonable frame count - likely mono-group
+    return { isMultiGroup: false, groupCount: 1 };
+  }
+
+  return { isMultiGroup: false, groupCount: 1 };
+}
+
+/**
+ * Decode CL2 file (mono-group or 8 directions with multiple frames)
  * @param {Uint8Array} cl2Data - CL2 file data
  * @param {Object} options - Decoding options
  * @returns {Object} Decoded CL2 with all directions and frames
@@ -1023,17 +1121,65 @@ export function decodeCL2(cl2Data, options = {}) {
   const { frameWidth = 0, palette = DIABLO_FULL_PALETTE, filename = '' } = options;
   const view = new DataView(cl2Data.buffer, cl2Data.byteOffset, cl2Data.byteLength);
 
-  // CL2 header: 8 direction offsets
+  // Detect CL2 type (mono-group vs multi-group)
+  const cl2Type = detectCL2Type(cl2Data);
+
+  // Handle mono-group CL2 (single animation, no directions)
+  if (!cl2Type.isMultiGroup) {
+    // Mono-group format: same as CEL header but uses CL2 RLE encoding
+    const frameCount = view.getUint32(0, true);
+
+    if (frameCount === 0 || frameCount > 10000) {
+      console.warn('Invalid CL2 mono-group frame count, trying CEL decode');
+      return { type: 'cel', data: decodeCELFull(cl2Data, options) };
+    }
+
+    // Read frame offsets
+    const frameOffsets = [];
+    for (let i = 0; i <= frameCount; i++) {
+      frameOffsets.push(view.getUint32(4 + i * 4, true));
+    }
+
+    // Decode frames using CL2 RLE
+    const frames = [];
+    let detectedWidth = frameWidth;
+
+    for (let f = 0; f < frameCount; f++) {
+      const frameStart = frameOffsets[f];
+      const frameEnd = frameOffsets[f + 1];
+
+      if (frameStart >= cl2Data.length || frameEnd > cl2Data.length) {
+        continue;
+      }
+
+      const frameData = cl2Data.slice(frameStart, frameEnd);
+      const decoded = decodeRLEFrame(frameData, detectedWidth, filename, true);
+
+      if (f === 0 && detectedWidth === 0) {
+        detectedWidth = decoded.width;
+      }
+
+      frames.push({
+        index: f,
+        ...decoded,
+        dataOffset: frameStart,
+        dataSize: frameEnd - frameStart,
+      });
+    }
+
+    return {
+      type: 'cl2-mono',
+      frameCount,
+      frames,
+      totalWidth: detectedWidth,
+      palette,
+    };
+  }
+
+  // Multi-group CL2: 8 direction offsets at start
   const directionOffsets = [];
   for (let d = 0; d < 8; d++) {
     directionOffsets.push(view.getUint32(d * 4, true));
-  }
-
-  // Validate first offset
-  if (directionOffsets[0] < 32 || directionOffsets[0] >= cl2Data.length) {
-    // This might be a regular CEL file, not CL2
-    console.warn('CL2 format detection failed, attempting CEL decode');
-    return { type: 'cel', data: decodeCELFull(cl2Data, options) };
   }
 
   const directions = [];
@@ -1073,7 +1219,8 @@ export function decodeCL2(cl2Data, options = {}) {
       }
 
       const frameData = cl2Data.slice(frameStart, frameEnd);
-      const decoded = decodeRLEFrame(frameData, detectedWidth, filename);
+      // IMPORTANT: Pass isCL2=true to use CL2 RLE encoding (different from CEL!)
+      const decoded = decodeRLEFrame(frameData, detectedWidth, filename, true);
 
       if (f === 0 && d === 0 && detectedWidth === 0) {
         detectedWidth = decoded.width;
@@ -1111,9 +1258,29 @@ export function decodeCL2(cl2Data, options = {}) {
  */
 export function renderFrameToImageData(frame, palette = DIABLO_FULL_PALETTE, scale = 1) {
   const { indices, width, height } = frame;
+
+  // Validate inputs
+  if (!indices || indices.length === 0) {
+    console.warn('renderFrameToImageData: No indices data');
+    // Return a visible error pattern
+    const outWidth = (width || 32) * scale;
+    const outHeight = (height || 32) * scale;
+    const rgba = new Uint8ClampedArray(outWidth * outHeight * 4);
+    for (let i = 0; i < rgba.length; i += 4) {
+      rgba[i] = 255;     // Red
+      rgba[i + 1] = 0;
+      rgba[i + 2] = 0;
+      rgba[i + 3] = 255;
+    }
+    return new ImageData(rgba, outWidth, outHeight);
+  }
+
   const outWidth = width * scale;
   const outHeight = height * scale;
   const rgba = new Uint8ClampedArray(outWidth * outHeight * 4);
+
+  // Debug: count rendered pixels
+  let opaqueCount = 0;
 
   for (let y = 0; y < outHeight; y++) {
     for (let x = 0; x < outWidth; x++) {
@@ -1122,14 +1289,33 @@ export function renderFrameToImageData(frame, palette = DIABLO_FULL_PALETTE, sca
       const srcIdx = srcY * width + srcX;
       const dstIdx = (y * outWidth + x) * 4;
 
-      const colorIdx = indices[srcIdx] || 0;
-      const [r, g, b] = palette[colorIdx] || [0, 0, 0];
+      const colorIdx = srcIdx < indices.length ? indices[srcIdx] : 0;
+      const paletteEntry = palette[colorIdx];
+      const [r, g, b] = paletteEntry || [255, 0, 255]; // Magenta for missing palette
 
       rgba[dstIdx] = r;
       rgba[dstIdx + 1] = g;
       rgba[dstIdx + 2] = b;
       rgba[dstIdx + 3] = colorIdx === 0 ? 0 : 255;
+
+      if (colorIdx !== 0) opaqueCount++;
     }
+  }
+
+  // Log debug info on first render
+  if (typeof window !== 'undefined' && !window._celRenderDebugLogged) {
+    console.log('[CEL Render Debug]', {
+      width,
+      height,
+      scale,
+      outWidth,
+      outHeight,
+      indicesLength: indices.length,
+      opaquePixels: opaqueCount,
+      sampleIndices: Array.from(indices.slice(0, 20)),
+      samplePalette: palette.slice(0, 10),
+    });
+    window._celRenderDebugLogged = true;
   }
 
   return new ImageData(rgba, outWidth, outHeight);
