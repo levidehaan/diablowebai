@@ -658,11 +658,14 @@ function generateDiabloPalette() {
  * Used for heuristic dimension detection
  */
 const COMMON_SPRITE_SIZES = [
-  { w: 28, h: 28 },   // Small items
+  { w: 28, h: 28 },   // Small items, cursors
+  { w: 28, h: 56 },   // Item inventory sprites
   { w: 32, h: 32 },   // Items, UI elements
   { w: 56, h: 56 },   // Medium sprites
+  { w: 56, h: 84 },   // Item inventory sprites (2x3 slots)
+  { w: 56, h: 112 },  // Tall items (2x4 slots)
   { w: 64, h: 64 },   // Common monsters
-  { w: 96, h: 96 },   // Large sprites
+  { w: 96, h: 96 },   // Large sprites, characters
   { w: 128, h: 128 }, // Very large
   { w: 160, h: 160 }, // Boss sprites
   { w: 96, h: 128 },  // Tall sprites
@@ -671,15 +674,63 @@ const COMMON_SPRITE_SIZES = [
   { w: 80, h: 80 },   // Medium monsters
   { w: 36, h: 36 },   // Small monsters
   { w: 40, h: 40 },   // Small items
+  { w: 28, h: 84 },   // Tall items (1x3 slots)
 ];
+
+/**
+ * Common widths for different Diablo file types
+ */
+const DIABLO_WIDTH_HINTS = {
+  items: [28, 56],      // Item sprites are typically 28 or 56 wide
+  monsters: [96, 128],  // Monster sprites
+  missiles: [96],       // Missile graphics
+  towners: [96],        // Town NPCs
+  objects: [96, 128],   // Objects
+  inv: [28, 56],        // Inventory items
+};
+
+/**
+ * Get width hints based on filename
+ * @param {string} filename - File path or name
+ * @returns {number[]} Array of possible widths to try
+ */
+function getWidthHintsFromFilename(filename) {
+  if (!filename) return [56, 96, 28, 32, 64, 128];
+
+  const lower = filename.toLowerCase();
+
+  // Check for known folder patterns
+  if (lower.includes('items') || lower.includes('inv')) {
+    return [28, 56, 96];
+  }
+  if (lower.includes('monsters') || lower.includes('plrgfx')) {
+    return [96, 128, 160];
+  }
+  if (lower.includes('missiles')) {
+    return [96, 64, 128];
+  }
+  if (lower.includes('towners')) {
+    return [96, 128];
+  }
+  if (lower.includes('objects')) {
+    return [96, 128, 64];
+  }
+  if (lower.includes('levels') || lower.includes('l1') || lower.includes('l2') || lower.includes('l3') || lower.includes('l4')) {
+    return [32, 64];
+  }
+
+  // Default: try common sizes
+  return [56, 96, 28, 32, 64, 128];
+}
 
 /**
  * Detect likely sprite dimensions from pixel count
  * @param {number} pixelCount - Total decoded pixels
+ * @param {string} filename - Optional filename for hints
  * @returns {{width: number, height: number}} Estimated dimensions
  */
-function detectSpriteDimensions(pixelCount) {
-  // Check common sizes first
+function detectSpriteDimensions(pixelCount, filename = '') {
+  // Check common sizes first (exact matches)
   for (const size of COMMON_SPRITE_SIZES) {
     if (size.w * size.h === pixelCount) {
       return { width: size.w, height: size.h };
@@ -694,41 +745,133 @@ function detectSpriteDimensions(pixelCount) {
     return { width: nearestSqrt, height: nearestSqrt };
   }
 
+  // Get width hints based on filename
+  const widthHints = getWidthHintsFromFilename(filename);
+
+  // Try each hint width and see if it produces reasonable dimensions
+  for (const tryWidth of widthHints) {
+    // Check if pixel count is evenly divisible
+    if (pixelCount % tryWidth === 0) {
+      const height = pixelCount / tryWidth;
+      // Accept if height is reasonable (not too extreme)
+      if (height >= 8 && height <= 512 && height <= tryWidth * 4) {
+        return { width: tryWidth, height };
+      }
+    }
+
+    // Also try as height
+    if (pixelCount % tryWidth === 0) {
+      const width = pixelCount / tryWidth;
+      if (width >= 8 && width <= 512 && width <= tryWidth * 4) {
+        return { width, height: tryWidth };
+      }
+    }
+  }
+
   // Find factors
-  for (let w = Math.ceil(sqrt); w <= pixelCount; w++) {
+  for (let w = Math.ceil(sqrt); w <= Math.min(pixelCount, 256); w++) {
     if (pixelCount % w === 0) {
       const h = pixelCount / w;
       // Prefer roughly square aspect ratios
-      if (w <= h * 2 && h <= w * 2) {
+      if (w <= h * 3 && h <= w * 3 && h <= 512) {
         return { width: w, height: h };
       }
     }
   }
 
-  // Fallback: just make it work
-  return { width: Math.ceil(sqrt), height: Math.ceil(pixelCount / Math.ceil(sqrt)) };
+  // Try using width hints even if not exact divisor (may have padding)
+  for (const tryWidth of widthHints) {
+    const height = Math.ceil(pixelCount / tryWidth);
+    if (height >= 8 && height <= 512) {
+      return { width: tryWidth, height };
+    }
+  }
+
+  // Fallback: use sqrt-based estimate
+  const estWidth = Math.ceil(sqrt);
+  return { width: estWidth, height: Math.ceil(pixelCount / estWidth) };
+}
+
+/**
+ * Try to detect frame header in CEL data
+ * Some Diablo CEL files have a 10-byte header per frame with dimensions
+ *
+ * @param {Uint8Array} frameData - Frame data
+ * @returns {{hasHeader: boolean, width: number, height: number, dataOffset: number}}
+ */
+function detectFrameHeader(frameData) {
+  if (frameData.length < 10) {
+    return { hasHeader: false, width: 0, height: 0, dataOffset: 0 };
+  }
+
+  const view = new DataView(frameData.buffer, frameData.byteOffset, frameData.byteLength);
+
+  // Check for frame header marker (typically 0x0A or 10)
+  const headerSize = view.getUint16(0, true);
+
+  // Frame header format: [header_size(2), width(2), height(2), padding(4)]
+  if (headerSize === 10 || headerSize === 0x0A00) {
+    const width = view.getUint16(2, true);
+    const height = view.getUint16(4, true);
+
+    // Validate dimensions are reasonable
+    if (width > 0 && width <= 512 && height > 0 && height <= 512) {
+      return { hasHeader: true, width, height, dataOffset: 10 };
+    }
+  }
+
+  // Some CEL files have a different header with width first
+  const maybeWidth = view.getUint16(0, true);
+  const maybeHeight = view.getUint16(2, true);
+
+  // Check if these look like valid dimensions
+  if (maybeWidth >= 8 && maybeWidth <= 256 && maybeHeight >= 8 && maybeHeight <= 256) {
+    // Check if the remaining data size makes sense for these dimensions
+    const expectedPixels = maybeWidth * maybeHeight;
+    const remainingBytes = frameData.length - 4;
+
+    // RLE typically compresses to less than original, but not extremely so
+    if (remainingBytes > expectedPixels * 0.1 && remainingBytes < expectedPixels * 2) {
+      return { hasHeader: true, width: maybeWidth, height: maybeHeight, dataOffset: 4 };
+    }
+  }
+
+  return { hasHeader: false, width: 0, height: 0, dataOffset: 0 };
 }
 
 /**
  * Decode a single CEL frame from RLE data
+ * Diablo CEL files don't contain row markers - all pixels are stored sequentially.
+ * Width must be known in advance or inferred from the total pixel count.
+ *
  * @param {Uint8Array} frameData - RLE encoded frame data
- * @param {number} expectedWidth - Expected width (0 for auto-detect)
+ * @param {number} expectedWidth - Expected width (0 for auto-detect from pixel count)
+ * @param {string} filename - Optional filename for dimension hints
  * @returns {{indices: Uint8Array, width: number, height: number, rows: number[][]}}
  */
-function decodeRLEFrame(frameData, expectedWidth = 0) {
-  const rows = [];
-  let currentRow = [];
+function decodeRLEFrame(frameData, expectedWidth = 0, filename = '') {
+  // Try to detect frame header with dimensions
+  const header = detectFrameHeader(frameData);
+  let rleData = frameData;
+  let headerWidth = expectedWidth;
+  let headerHeight = 0;
+
+  if (header.hasHeader && expectedWidth === 0) {
+    headerWidth = header.width;
+    headerHeight = header.height;
+    rleData = frameData.slice(header.dataOffset);
+  }
+
+  // First pass: decode ALL pixels into a flat array
+  // Diablo CEL files don't use row markers - pixels are stored sequentially
+  const allPixels = [];
   let i = 0;
 
-  while (i < frameData.length) {
-    const cmd = frameData[i++];
+  while (i < rleData.length) {
+    const cmd = rleData[i++];
 
     if (cmd === 0) {
-      // End of row marker (some CEL variants)
-      if (currentRow.length > 0) {
-        rows.push(currentRow);
-        currentRow = [];
-      }
+      // Some CEL variants use 0 as end marker, but we just skip it
       continue;
     }
 
@@ -736,48 +879,73 @@ function decodeRLEFrame(frameData, expectedWidth = 0) {
       // Transparent pixels: (256 - cmd) transparent pixels
       const count = 256 - cmd;
       for (let j = 0; j < count; j++) {
-        currentRow.push(0);
+        allPixels.push(0);
       }
     } else if (cmd === 0x80) {
-      // 128 transparent pixels (line continues)
+      // 128 transparent pixels
       for (let j = 0; j < 128; j++) {
-        currentRow.push(0);
+        allPixels.push(0);
       }
     } else if (cmd === 0x7F) {
-      // 127 opaque pixels (line continues)
-      for (let j = 0; j < 127 && i < frameData.length; j++) {
-        currentRow.push(frameData[i++]);
+      // 127 opaque pixels follow
+      for (let j = 0; j < 127 && i < rleData.length; j++) {
+        allPixels.push(rleData[i++]);
       }
     } else if (cmd > 0 && cmd <= 0x7E) {
       // Opaque pixels: cmd pixels follow
-      for (let j = 0; j < cmd && i < frameData.length; j++) {
-        currentRow.push(frameData[i++]);
+      for (let j = 0; j < cmd && i < rleData.length; j++) {
+        allPixels.push(rleData[i++]);
       }
     }
   }
 
-  // Add last row if not empty
-  if (currentRow.length > 0) {
-    rows.push(currentRow);
+  const totalPixels = allPixels.length;
+
+  // Determine dimensions - prioritize header values, then expected width, then heuristics
+  let width, height;
+
+  if (headerWidth > 0 && headerHeight > 0) {
+    // Use dimensions from frame header
+    width = headerWidth;
+    height = headerHeight;
+  } else if (headerWidth > 0) {
+    // Use width from header, calculate height
+    width = headerWidth;
+    height = Math.ceil(totalPixels / width);
+  } else if (expectedWidth > 0) {
+    // Use provided width
+    width = expectedWidth;
+    height = Math.ceil(totalPixels / width);
+  } else {
+    // Auto-detect dimensions from pixel count using heuristics
+    const dims = detectSpriteDimensions(totalPixels, filename);
+    width = dims.width;
+    height = dims.height;
   }
 
-  // Determine width
-  let width = expectedWidth;
-  if (width === 0) {
-    // Find max row length
-    width = Math.max(...rows.map(r => r.length), 1);
-  }
-
-  // Normalize rows to same width and create flat indices array
-  const height = rows.length;
+  // Create indices array with proper dimensions
   const indices = new Uint8Array(width * height);
 
-  // CEL frames are bottom-up, so reverse the rows
+  // CEL frames are stored bottom-up, so we need to flip vertically
+  // Fill row by row from the decoded pixels, then flip
   for (let y = 0; y < height; y++) {
-    const srcRow = rows[height - 1 - y] || [];
     for (let x = 0; x < width; x++) {
-      indices[y * width + x] = srcRow[x] || 0;
+      const srcIdx = y * width + x;
+      // Flip Y: row 0 in output = row (height-1) from source
+      const dstY = height - 1 - y;
+      const dstIdx = dstY * width + x;
+      indices[dstIdx] = srcIdx < totalPixels ? allPixels[srcIdx] : 0;
     }
+  }
+
+  // Build rows array for compatibility (already flipped)
+  const rows = [];
+  for (let y = 0; y < height; y++) {
+    const row = [];
+    for (let x = 0; x < width; x++) {
+      row.push(indices[y * width + x]);
+    }
+    rows.push(row);
   }
 
   return { indices, width, height, rows };
@@ -790,7 +958,7 @@ function decodeRLEFrame(frameData, expectedWidth = 0) {
  * @returns {Object} Decoded CEL with all frames
  */
 export function decodeCELFull(celData, options = {}) {
-  const { frameWidth = 0, palette = DIABLO_FULL_PALETTE } = options;
+  const { frameWidth = 0, palette = DIABLO_FULL_PALETTE, filename = '' } = options;
   const view = new DataView(celData.buffer, celData.byteOffset, celData.byteLength);
 
   // Read frame count
@@ -822,7 +990,7 @@ export function decodeCELFull(celData, options = {}) {
     }
 
     const frameData = celData.slice(frameStart, frameEnd);
-    const decoded = decodeRLEFrame(frameData, detectedWidth);
+    const decoded = decodeRLEFrame(frameData, detectedWidth, filename);
 
     // Use first frame to set width for consistency
     if (i === 0 && detectedWidth === 0) {
@@ -852,7 +1020,7 @@ export function decodeCELFull(celData, options = {}) {
  * @returns {Object} Decoded CL2 with all directions and frames
  */
 export function decodeCL2(cl2Data, options = {}) {
-  const { frameWidth = 0, palette = DIABLO_FULL_PALETTE } = options;
+  const { frameWidth = 0, palette = DIABLO_FULL_PALETTE, filename = '' } = options;
   const view = new DataView(cl2Data.buffer, cl2Data.byteOffset, cl2Data.byteLength);
 
   // CL2 header: 8 direction offsets
@@ -905,7 +1073,7 @@ export function decodeCL2(cl2Data, options = {}) {
       }
 
       const frameData = cl2Data.slice(frameStart, frameEnd);
-      const decoded = decodeRLEFrame(frameData, detectedWidth);
+      const decoded = decodeRLEFrame(frameData, detectedWidth, filename);
 
       if (f === 0 && d === 0 && detectedWidth === 0) {
         detectedWidth = decoded.width;
