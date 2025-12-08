@@ -1995,6 +1995,16 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
           {customWidth > 0 && <span className="custom-width-indicator">(custom width)</span>}
         </div>
       )}
+
+      {/* Debug info for decoding issues */}
+      {currentFrameData && currentFrameData.indices && (
+        <div className="cel-debug-info">
+          <span>Pixels: {currentFrameData.indices.length.toLocaleString()}</span>
+          <span>Non-zero: {Array.from(currentFrameData.indices).filter(v => v !== 0).length.toLocaleString()}</span>
+          <span>Unique colors: {new Set(currentFrameData.indices).size}</span>
+          <span>Max index: {Math.max(...currentFrameData.indices)}</span>
+        </div>
+      )}
     </div>
   );
 }
