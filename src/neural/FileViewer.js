@@ -1817,11 +1817,21 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
       const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
       const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
 
+      // Find first non-transparent pixel for debugging
+      let firstOpaqueIdx = -1;
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        if (imageData.data[i + 3] > 0) {
+          firstOpaqueIdx = i;
+          break;
+        }
+      }
       console.log('[CEL Viewer] ImageData created:', {
         width: imageData.width,
         height: imageData.height,
         dataLength: imageData.data.length,
         sampleRGBA: Array.from(imageData.data.slice(0, 16)),
+        firstOpaquePixelAt: firstOpaqueIdx,
+        firstOpaqueRGBA: firstOpaqueIdx >= 0 ? Array.from(imageData.data.slice(firstOpaqueIdx, firstOpaqueIdx + 4)) : 'none',
       });
 
       // Use a temp canvas to properly composite the sprite with transparency
@@ -2133,6 +2143,9 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
       if (decoded.type === 'cel') {
         // Fallback to CEL format
         setCl2Data({ ...decoded.data, isCEL: true });
+      } else if (decoded.type === 'cl2-mono') {
+        // Mono-group CL2 (single direction)
+        setCl2Data({ ...decoded, isMono: true });
       } else {
         setCl2Data(decoded);
       }
@@ -2149,7 +2162,8 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
   // Get current frames
   const getCurrentFrames = useCallback(() => {
     if (!cl2Data) return [];
-    if (cl2Data.isCEL) return cl2Data.frames;
+    if (cl2Data.isCEL || cl2Data.isMono) return cl2Data.frames || [];
+    if (!cl2Data.directions) return [];
     const dir = cl2Data.directions[currentDirection];
     return dir?.frames || [];
   }, [cl2Data, currentDirection]);
@@ -2177,9 +2191,9 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
     const ctx = canvas.getContext('2d');
     const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
 
-    if (showAllDirections && !cl2Data.isCEL) {
+    if (showAllDirections && !cl2Data.isCEL && !cl2Data.isMono && cl2Data.directions) {
       // Show all 8 directions in a grid
-      const directions = cl2Data.directions.filter(d => d.frames.length > 0);
+      const directions = cl2Data.directions.filter(d => d && d.frames && d.frames.length > 0);
       if (directions.length === 0) return;
 
       const sampleFrame = directions[0].frames[0];
