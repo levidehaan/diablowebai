@@ -562,6 +562,425 @@ export function createCL2(directions, options = {}) {
   return output;
 }
 
+/**
+ * Full Diablo 1 color palette (256 colors)
+ * Based on the game's default palette for dungeon sprites
+ */
+export const DIABLO_FULL_PALETTE = generateDiabloPalette();
+
+function generateDiabloPalette() {
+  const palette = [];
+
+  // Index 0: Transparent (black in palette)
+  palette.push([0, 0, 0]);
+
+  // Grays (1-31) - dungeon stone and shadows
+  for (let i = 1; i <= 31; i++) {
+    const v = Math.floor((i / 31) * 200);
+    palette.push([v, v, v]);
+  }
+
+  // Dark reds/browns (32-63) - blood, leather
+  for (let i = 0; i < 32; i++) {
+    const t = i / 31;
+    palette.push([
+      Math.floor(40 + t * 140),
+      Math.floor(10 + t * 50),
+      Math.floor(5 + t * 30)
+    ]);
+  }
+
+  // Oranges/flames (64-95) - fire, torches
+  for (let i = 0; i < 32; i++) {
+    const t = i / 31;
+    palette.push([
+      Math.floor(150 + t * 105),
+      Math.floor(50 + t * 150),
+      Math.floor(t * 80)
+    ]);
+  }
+
+  // Yellows/golds (96-127) - treasure, holy
+  for (let i = 0; i < 32; i++) {
+    const t = i / 31;
+    palette.push([
+      Math.floor(150 + t * 105),
+      Math.floor(120 + t * 135),
+      Math.floor(20 + t * 60)
+    ]);
+  }
+
+  // Greens (128-159) - poison, nature
+  for (let i = 0; i < 32; i++) {
+    const t = i / 31;
+    palette.push([
+      Math.floor(t * 100),
+      Math.floor(50 + t * 180),
+      Math.floor(t * 80)
+    ]);
+  }
+
+  // Blues/cyans (160-191) - magic, cold, water
+  for (let i = 0; i < 32; i++) {
+    const t = i / 31;
+    palette.push([
+      Math.floor(t * 100),
+      Math.floor(50 + t * 150),
+      Math.floor(120 + t * 135)
+    ]);
+  }
+
+  // Purples/magentas (192-223) - arcane, demonic
+  for (let i = 0; i < 32; i++) {
+    const t = i / 31;
+    palette.push([
+      Math.floor(80 + t * 140),
+      Math.floor(t * 80),
+      Math.floor(100 + t * 130)
+    ]);
+  }
+
+  // Flesh/skin tones (224-255) - characters
+  for (let i = 0; i < 32; i++) {
+    const t = i / 31;
+    palette.push([
+      Math.floor(140 + t * 100),
+      Math.floor(90 + t * 80),
+      Math.floor(60 + t * 60)
+    ]);
+  }
+
+  return palette;
+}
+
+/**
+ * Common sprite dimensions in Diablo 1
+ * Used for heuristic dimension detection
+ */
+const COMMON_SPRITE_SIZES = [
+  { w: 28, h: 28 },   // Small items
+  { w: 32, h: 32 },   // Items, UI elements
+  { w: 56, h: 56 },   // Medium sprites
+  { w: 64, h: 64 },   // Common monsters
+  { w: 96, h: 96 },   // Large sprites
+  { w: 128, h: 128 }, // Very large
+  { w: 160, h: 160 }, // Boss sprites
+  { w: 96, h: 128 },  // Tall sprites
+  { w: 128, h: 96 },  // Wide sprites
+  { w: 48, h: 48 },   // Medium items
+  { w: 80, h: 80 },   // Medium monsters
+  { w: 36, h: 36 },   // Small monsters
+  { w: 40, h: 40 },   // Small items
+];
+
+/**
+ * Detect likely sprite dimensions from pixel count
+ * @param {number} pixelCount - Total decoded pixels
+ * @returns {{width: number, height: number}} Estimated dimensions
+ */
+function detectSpriteDimensions(pixelCount) {
+  // Check common sizes first
+  for (const size of COMMON_SPRITE_SIZES) {
+    if (size.w * size.h === pixelCount) {
+      return { width: size.w, height: size.h };
+    }
+  }
+
+  // Try to find integer factors close to square
+  const sqrt = Math.sqrt(pixelCount);
+  const nearestSqrt = Math.round(sqrt);
+
+  if (nearestSqrt * nearestSqrt === pixelCount) {
+    return { width: nearestSqrt, height: nearestSqrt };
+  }
+
+  // Find factors
+  for (let w = Math.ceil(sqrt); w <= pixelCount; w++) {
+    if (pixelCount % w === 0) {
+      const h = pixelCount / w;
+      // Prefer roughly square aspect ratios
+      if (w <= h * 2 && h <= w * 2) {
+        return { width: w, height: h };
+      }
+    }
+  }
+
+  // Fallback: just make it work
+  return { width: Math.ceil(sqrt), height: Math.ceil(pixelCount / Math.ceil(sqrt)) };
+}
+
+/**
+ * Decode a single CEL frame from RLE data
+ * @param {Uint8Array} frameData - RLE encoded frame data
+ * @param {number} expectedWidth - Expected width (0 for auto-detect)
+ * @returns {{indices: Uint8Array, width: number, height: number, rows: number[][]}}
+ */
+function decodeRLEFrame(frameData, expectedWidth = 0) {
+  const rows = [];
+  let currentRow = [];
+  let i = 0;
+
+  while (i < frameData.length) {
+    const cmd = frameData[i++];
+
+    if (cmd === 0) {
+      // End of row marker (some CEL variants)
+      if (currentRow.length > 0) {
+        rows.push(currentRow);
+        currentRow = [];
+      }
+      continue;
+    }
+
+    if (cmd >= 0x81) {
+      // Transparent pixels: (256 - cmd) transparent pixels
+      const count = 256 - cmd;
+      for (let j = 0; j < count; j++) {
+        currentRow.push(0);
+      }
+    } else if (cmd === 0x80) {
+      // 128 transparent pixels (line continues)
+      for (let j = 0; j < 128; j++) {
+        currentRow.push(0);
+      }
+    } else if (cmd === 0x7F) {
+      // 127 opaque pixels (line continues)
+      for (let j = 0; j < 127 && i < frameData.length; j++) {
+        currentRow.push(frameData[i++]);
+      }
+    } else if (cmd > 0 && cmd <= 0x7E) {
+      // Opaque pixels: cmd pixels follow
+      for (let j = 0; j < cmd && i < frameData.length; j++) {
+        currentRow.push(frameData[i++]);
+      }
+    }
+  }
+
+  // Add last row if not empty
+  if (currentRow.length > 0) {
+    rows.push(currentRow);
+  }
+
+  // Determine width
+  let width = expectedWidth;
+  if (width === 0) {
+    // Find max row length
+    width = Math.max(...rows.map(r => r.length), 1);
+  }
+
+  // Normalize rows to same width and create flat indices array
+  const height = rows.length;
+  const indices = new Uint8Array(width * height);
+
+  // CEL frames are bottom-up, so reverse the rows
+  for (let y = 0; y < height; y++) {
+    const srcRow = rows[height - 1 - y] || [];
+    for (let x = 0; x < width; x++) {
+      indices[y * width + x] = srcRow[x] || 0;
+    }
+  }
+
+  return { indices, width, height, rows };
+}
+
+/**
+ * Enhanced CEL decoder with proper frame parsing
+ * @param {Uint8Array} celData - CEL file data
+ * @param {Object} options - Decoding options
+ * @returns {Object} Decoded CEL with all frames
+ */
+export function decodeCELFull(celData, options = {}) {
+  const { frameWidth = 0, palette = DIABLO_FULL_PALETTE } = options;
+  const view = new DataView(celData.buffer, celData.byteOffset, celData.byteLength);
+
+  // Read frame count
+  const frameCount = view.getUint32(0, true);
+
+  // Validate frame count
+  if (frameCount === 0 || frameCount > 10000) {
+    throw new Error(`Invalid CEL frame count: ${frameCount}`);
+  }
+
+  // Read frame offsets
+  const frameOffsets = [];
+  for (let i = 0; i <= frameCount; i++) {
+    frameOffsets.push(view.getUint32(4 + i * 4, true));
+  }
+
+  // Decode each frame
+  const frames = [];
+  let detectedWidth = frameWidth;
+
+  for (let i = 0; i < frameCount; i++) {
+    const frameStart = frameOffsets[i];
+    const frameEnd = frameOffsets[i + 1];
+    const frameSize = frameEnd - frameStart;
+
+    if (frameStart >= celData.length || frameEnd > celData.length) {
+      console.warn(`Frame ${i} out of bounds`);
+      continue;
+    }
+
+    const frameData = celData.slice(frameStart, frameEnd);
+    const decoded = decodeRLEFrame(frameData, detectedWidth);
+
+    // Use first frame to set width for consistency
+    if (i === 0 && detectedWidth === 0) {
+      detectedWidth = decoded.width;
+    }
+
+    frames.push({
+      index: i,
+      ...decoded,
+      dataOffset: frameStart,
+      dataSize: frameSize,
+    });
+  }
+
+  return {
+    frameCount,
+    frames,
+    totalWidth: detectedWidth,
+    palette,
+  };
+}
+
+/**
+ * Decode CL2 file (8 directions, each with multiple frames)
+ * @param {Uint8Array} cl2Data - CL2 file data
+ * @param {Object} options - Decoding options
+ * @returns {Object} Decoded CL2 with all directions and frames
+ */
+export function decodeCL2(cl2Data, options = {}) {
+  const { frameWidth = 0, palette = DIABLO_FULL_PALETTE } = options;
+  const view = new DataView(cl2Data.buffer, cl2Data.byteOffset, cl2Data.byteLength);
+
+  // CL2 header: 8 direction offsets
+  const directionOffsets = [];
+  for (let d = 0; d < 8; d++) {
+    directionOffsets.push(view.getUint32(d * 4, true));
+  }
+
+  // Validate first offset
+  if (directionOffsets[0] < 32 || directionOffsets[0] >= cl2Data.length) {
+    // This might be a regular CEL file, not CL2
+    console.warn('CL2 format detection failed, attempting CEL decode');
+    return { type: 'cel', data: decodeCELFull(cl2Data, options) };
+  }
+
+  const directions = [];
+  let detectedWidth = frameWidth;
+
+  for (let d = 0; d < 8; d++) {
+    const dirOffset = directionOffsets[d];
+    const nextDirOffset = d < 7 ? directionOffsets[d + 1] : cl2Data.length;
+
+    if (dirOffset >= cl2Data.length) {
+      directions.push({ frames: [], frameCount: 0 });
+      continue;
+    }
+
+    // Read direction's frame count and offsets
+    const dirView = new DataView(cl2Data.buffer, cl2Data.byteOffset + dirOffset, nextDirOffset - dirOffset);
+    const frameCount = dirView.getUint32(0, true);
+
+    if (frameCount === 0 || frameCount > 1000) {
+      directions.push({ frames: [], frameCount: 0 });
+      continue;
+    }
+
+    const frameOffsets = [];
+    for (let f = 0; f <= frameCount; f++) {
+      frameOffsets.push(dirView.getUint32(4 + f * 4, true));
+    }
+
+    // Decode frames for this direction
+    const frames = [];
+    for (let f = 0; f < frameCount; f++) {
+      const frameStart = dirOffset + frameOffsets[f];
+      const frameEnd = dirOffset + frameOffsets[f + 1];
+
+      if (frameStart >= cl2Data.length || frameEnd > cl2Data.length) {
+        continue;
+      }
+
+      const frameData = cl2Data.slice(frameStart, frameEnd);
+      const decoded = decodeRLEFrame(frameData, detectedWidth);
+
+      if (f === 0 && d === 0 && detectedWidth === 0) {
+        detectedWidth = decoded.width;
+      }
+
+      frames.push({
+        index: f,
+        ...decoded,
+      });
+    }
+
+    directions.push({
+      directionIndex: d,
+      frameCount,
+      frames,
+    });
+  }
+
+  return {
+    type: 'cl2',
+    directionCount: 8,
+    directions,
+    totalWidth: detectedWidth,
+    palette,
+    directionNames: ['S', 'SW', 'W', 'NW', 'N', 'NE', 'E', 'SE'],
+  };
+}
+
+/**
+ * Render a decoded frame to RGBA ImageData
+ * @param {Object} frame - Decoded frame with indices
+ * @param {Array} palette - Color palette
+ * @param {number} scale - Render scale
+ * @returns {ImageData} Rendered frame
+ */
+export function renderFrameToImageData(frame, palette = DIABLO_FULL_PALETTE, scale = 1) {
+  const { indices, width, height } = frame;
+  const outWidth = width * scale;
+  const outHeight = height * scale;
+  const rgba = new Uint8ClampedArray(outWidth * outHeight * 4);
+
+  for (let y = 0; y < outHeight; y++) {
+    for (let x = 0; x < outWidth; x++) {
+      const srcX = Math.floor(x / scale);
+      const srcY = Math.floor(y / scale);
+      const srcIdx = srcY * width + srcX;
+      const dstIdx = (y * outWidth + x) * 4;
+
+      const colorIdx = indices[srcIdx] || 0;
+      const [r, g, b] = palette[colorIdx] || [0, 0, 0];
+
+      rgba[dstIdx] = r;
+      rgba[dstIdx + 1] = g;
+      rgba[dstIdx + 2] = b;
+      rgba[dstIdx + 3] = colorIdx === 0 ? 0 : 255;
+    }
+  }
+
+  return new ImageData(rgba, outWidth, outHeight);
+}
+
+/**
+ * Render frame to canvas
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {Object} frame - Decoded frame
+ * @param {Array} palette - Color palette
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ * @param {number} scale - Render scale
+ */
+export function renderFrameToCanvas(ctx, frame, palette = DIABLO_FULL_PALETTE, x = 0, y = 0, scale = 1) {
+  const imageData = renderFrameToImageData(frame, palette, scale);
+  ctx.putImageData(imageData, x, y);
+}
+
 // Default export
 const CELEncoder = {
   parsePalette,
@@ -572,9 +991,14 @@ const CELEncoder = {
   createSolidColorCEL,
   createTestPatternCEL,
   decodeCEL,
+  decodeCELFull,
+  decodeCL2,
+  renderFrameToImageData,
+  renderFrameToCanvas,
   indicesToRGBA,
   createCL2,
   DEFAULT_PALETTE,
+  DIABLO_FULL_PALETTE,
 };
 
 export default CELEncoder;

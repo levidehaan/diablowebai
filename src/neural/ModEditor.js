@@ -19,7 +19,7 @@ import { MpqReader } from '../api/savefile';
 import { CampaignPackageLoader } from './CampaignPackage';
 import { LevelPreview, MiniMap } from './LevelPreview';
 import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
-import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, FileInfo, getFileType, getFileCategory } from './FileViewer';
+import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, FileInfo, CELViewer, CL2Viewer, getFileType, getFileCategory } from './FileViewer';
 
 // Spawn.mpq valid sizes
 const SpawnSizes = [50274091, 25830791];
@@ -1318,19 +1318,20 @@ export class ModEditor extends Component {
                   </div>
                 )}
 
-                {/* CEL/CL2 Sprite Info */}
-                {viewMode === 'preview' && ['CEL', 'CL2'].includes(selectedFileType?.key) && selectedFileData && (
-                  <div className="sprite-preview">
-                    <h4>{selectedFileType.icon} Sprite/Animation File</h4>
-                    <p>File: <strong>{selectedFile.split('/').pop()}</strong></p>
-                    <p>Type: <strong>{selectedFileType.name}</strong></p>
-                    <p>Size: <strong>{selectedFileData.byteLength?.toLocaleString() || 'N/A'} bytes</strong></p>
-                    <p className="hint">CEL/CL2 visual preview coming soon. Use Hex view to inspect raw data.</p>
-                    <div className="sprite-info">
-                      <p><strong>CEL</strong> = Static sprite frames</p>
-                      <p><strong>CL2</strong> = Animated sprite sequences</p>
-                    </div>
-                  </div>
+                {/* CEL Sprite Viewer */}
+                {viewMode === 'preview' && selectedFileType?.key === 'CEL' && selectedFileData && (
+                  <CELViewer
+                    data={selectedFileData}
+                    filename={selectedFile}
+                  />
+                )}
+
+                {/* CL2 Animation Viewer */}
+                {viewMode === 'preview' && selectedFileType?.key === 'CL2' && selectedFileData && (
+                  <CL2Viewer
+                    data={selectedFileData}
+                    filename={selectedFile}
+                  />
                 )}
 
                 {/* Generic file preview (not yet supported) */}
