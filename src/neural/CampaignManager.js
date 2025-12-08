@@ -14,6 +14,8 @@ import campaignGenerator, { CAMPAIGN_TEMPLATES } from './CampaignGenerator';
 import worldBuilder from './WorldBuilder';
 import GameStorage from './GameStorage';
 import { CampaignPackageBuilder, CampaignPackageLoader, downloadCampaignPackage } from './CampaignPackage';
+import { MPQWriter } from './MPQWriter';
+import { convertCampaign } from './index';
 import './CampaignManager.scss';
 
 /**
@@ -378,11 +380,62 @@ export function CampaignManager({ onCampaignReady, onClose, filesystem }) {
 
       // Build the campaign package with proper DUN files
       const packageBuilder = new CampaignPackageBuilder();
+
+      // Try to build a complete MPQ and include it in the package
+      let mpqIncluded = false;
+      try {
+        // Get spawn.mpq from filesystem
+        let fs = filesystem;
+        if (fs && typeof fs.then === 'function') {
+          fs = await fs;
+        }
+
+        const spawnMpq = fs?.files?.get('spawn.mpq');
+        if (spawnMpq) {
+          updateProgress('Creating Levels', 75, {
+            message: 'Building modified MPQ...',
+            currentTask: 'Converting campaign to level data',
+          });
+
+          // Convert campaign to DUN files
+          const conversionResult = convertCampaign(campaign, { autoFix: true });
+
+          if (conversionResult.success && conversionResult.levels.length > 0) {
+            // Create MPQ writer and add converted files
+            const writer = new MPQWriter(spawnMpq.buffer || spawnMpq);
+
+            for (const level of conversionResult.levels) {
+              if (level.path && level.buffer) {
+                writer.setFile(level.path, level.buffer);
+              }
+            }
+
+            // Build the modified MPQ
+            const modifiedMpq = writer.build();
+            console.log(`[CampaignManager] Built modified MPQ: ${modifiedMpq.length} bytes`);
+
+            // Add to package
+            packageBuilder.setMPQ(modifiedMpq);
+            mpqIncluded = true;
+          }
+        } else {
+          console.log('[CampaignManager] No spawn.mpq available, package will be DUN-only');
+        }
+      } catch (mpqErr) {
+        console.warn('[CampaignManager] Could not include MPQ in package:', mpqErr.message);
+        // Continue without MPQ - package will still have DUN files
+      }
+
+      updateProgress('Creating Levels', 80, {
+        message: mpqIncluded ? 'MPQ included, finalizing package...' : 'Finalizing DUN package...',
+        currentTask: 'Compressing package',
+      });
+
       const packageBlob = await packageBuilder.build(campaign, world);
       const packageResults = packageBuilder.getResults();
 
       updateProgress('Creating Levels', 85, {
-        message: `Package created with ${packageResults.dunCount} DUN files`,
+        message: `Package created with ${packageResults.dunCount} DUN files${mpqIncluded ? ' + MPQ' : ''}`,
         currentTask: packageResults.errors.length > 0 ?
           `Completed with ${packageResults.errors.length} errors` : 'Package complete',
         level: packageResults.errors.length > 0 ? 'warning' : 'success',

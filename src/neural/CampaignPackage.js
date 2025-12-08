@@ -182,9 +182,25 @@ export class CampaignPackageBuilder {
       world: null,
       triggers: [],
       dunFiles: {}, // levelId -> { path, data: base64 }
+      mpqData: null, // Base64-encoded modified MPQ (optional, for self-contained packages)
     };
     this.errors = [];
     this.warnings = [];
+    this.mpqBuffer = null; // Raw MPQ buffer before encoding
+  }
+
+  /**
+   * Set the modified MPQ data to include in the package
+   * This makes the package self-contained and playable without a base MPQ
+   * @param {Uint8Array|ArrayBuffer} mpqData - The modified MPQ data
+   */
+  setMPQ(mpqData) {
+    if (!mpqData) return;
+
+    // Convert to Uint8Array if needed
+    const buffer = mpqData instanceof Uint8Array ? mpqData : new Uint8Array(mpqData);
+    this.mpqBuffer = buffer;
+    console.log(`[CampaignPackage] MPQ data set: ${buffer.length} bytes`);
   }
 
   /**
@@ -212,10 +228,26 @@ export class CampaignPackageBuilder {
     // Step 4: Generate quest triggers
     this.package.triggers = this.generateTriggers(campaign);
 
+    // Step 5: Include modified MPQ if set
+    if (this.mpqBuffer) {
+      // Convert MPQ buffer to base64
+      let binary = '';
+      const bytes = this.mpqBuffer;
+      const len = bytes.length;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      this.package.mpqData = btoa(binary);
+      console.log(`[CampaignPackage] Included MPQ data: ${this.mpqBuffer.length} bytes -> ${this.package.mpqData.length} chars base64`);
+    }
+
     console.log('[CampaignPackage] Package built with', Object.keys(this.package.dunFiles).length, 'DUN files');
+    if (this.package.mpqData) {
+      console.log('[CampaignPackage] Package includes modified MPQ');
+    }
     console.log('[CampaignPackage] Warnings:', this.warnings.length, 'Errors:', this.errors.length);
 
-    // Step 5: Compress and return as Blob
+    // Step 6: Compress and return as Blob
     const json = JSON.stringify(this.package);
     const compressed = pako.gzip(json);
 
@@ -658,6 +690,42 @@ export class CampaignPackageLoader {
     }
 
     return null;
+  }
+
+  /**
+   * Check if the package contains an embedded MPQ
+   * @returns {boolean}
+   */
+  hasMPQ() {
+    return !!this.package?.mpqData;
+  }
+
+  /**
+   * Get the embedded MPQ data as a Uint8Array
+   * @returns {Uint8Array|null} MPQ data or null if not included
+   */
+  getMPQ() {
+    if (!this.package?.mpqData) return null;
+
+    // Decode base64 to Uint8Array
+    const binary = atob(this.package.mpqData);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    console.log(`[CampaignPackage] Extracted MPQ: ${bytes.length} bytes`);
+    return bytes;
+  }
+
+  /**
+   * Get the MPQ size without decoding
+   * @returns {number} Approximate original size in bytes
+   */
+  getMPQSize() {
+    if (!this.package?.mpqData) return 0;
+    // Base64 inflates size by ~33%, so original is ~75% of base64 length
+    return Math.floor(this.package.mpqData.length * 0.75);
   }
 }
 
