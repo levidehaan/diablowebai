@@ -1,0 +1,141 @@
+{
+  "cel": {
+    "total": 9,
+    "success": 0,
+    "items": [
+      {
+        "name": "ctrlpan\\panel8.cel",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "items\\armor2.cel",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "items\\bottle.cel",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "items\\fbttleor.cel",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "items\\goldflip.cel",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "items\\scroll.cel",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "items\\staff.cel",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "data\\inv\\objcurs.cel",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "levels\\l1data\\l1s.cel",
+        "success": false,
+        "error": "Decode failed"
+      }
+    ]
+  },
+  "cl2": {
+    "total": 6,
+    "success": 0,
+    "items": [
+      {
+        "name": "missiles\\firebolt.cl2",
+        "success": false,
+        "error": "File not found"
+      },
+      {
+        "name": "missiles\\arrows.cl2",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "monsters\\scav\\scava.cl2",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "monsters\\skelaxe\\sklaxa.cl2",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "monsters\\zombie\\zombiea.cl2",
+        "success": false,
+        "error": "Decode failed"
+      },
+      {
+        "name": "plrgfx\\warrior\\wla\\wlawl.cl2",
+        "success": false,
+        "error": "Decode failed"
+      }
+    ]
+  },
+  "pal": {
+    "total": 4,
+    "success": 0,
+    "items": [
+      {
+        "name": "levels\\l1data\\l1.pal",
+        "success": false,
+        "error": "Invalid size: 776 bytes (expected 768)"
+      },
+      {
+        "name": "levels\\l2data\\l2.pal",
+        "success": false,
+        "error": "File not found"
+      },
+      {
+        "name": "levels\\l3data\\l3.pal",
+        "success": false,
+        "error": "File not found"
+      },
+      {
+        "name": "levels\\l4data\\l4.pal",
+        "success": false,
+        "error": "File not found"
+      }
+    ]
+  },
+  "dun": {
+    "total": 4,
+    "success": 0,
+    "items": [
+      {
+        "name": "levels\\l1data\\sking.dun",
+        "success": false,
+        "error": "File not found"
+      },
+      {
+        "name": "levels\\l2data\\blood1.dun",
+        "success": false,
+        "error": "File not found"
+      },
+      {
+        "name": "levels\\l3data\\anvil.dun",
+        "success": false,
+        "error": "File not found"
+      },
+      {
+        "name": "levels\\l4data\\diab1.dun",
+        "success": false,
+        "error": "File not found"
+      }
+    ]
+  }
+}

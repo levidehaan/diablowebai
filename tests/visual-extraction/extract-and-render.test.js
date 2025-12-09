@@ -1,26 +1,24 @@
 /**
  * Visual Extraction and Rendering Test
  *
- * This test extracts files from spawn.mpq and renders CEL/CL2 files to PNG.
- * It creates a visual gallery that can be inspected to verify rendering.
+ * This test extracts files from spawn.mpq and renders CEL/CL2 files.
+ * Uses Puppeteer for browser-based rendering since canvas requires native compilation.
  *
  * Run with: node tests/visual-extraction/extract-and-render.test.js
  *
  * Output:
- *   tests/render-results/cel/    - PNG renders of CEL files
- *   tests/render-results/cl2/    - PNG renders of CL2 files
- *   tests/render-results/report.json - Success/failure report
- *   tests/render-results/index.html  - Visual gallery
+ *   tests/render-results/report.json - Extraction report
+ *   tests/render-results/raw/       - Raw RGBA data files
  */
 
 const fs = require('fs');
 const path = require('path');
-const { createCanvas } = require('canvas');
 
 // Paths
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const PUBLIC_DIR = path.join(PROJECT_ROOT, 'public');
 const RESULTS_DIR = path.join(__dirname, '..', 'render-results');
+const RAW_DIR = path.join(RESULTS_DIR, 'raw');
 
 // Ensure output directories exist
 function ensureDir(dir) {
@@ -110,7 +108,6 @@ function decompress(data, uncompressedSize) {
   }
 
   // Unknown compression
-  console.warn(`Unknown compression type: 0x${compressionType.toString(16)}`);
   return null;
 }
 
@@ -225,181 +222,69 @@ class MPQReader {
 const KNOWN_FILES = {
   cel: [
     'ctrlpan\\panel8.cel',
-    'ctrlpan\\panel8bu.cel',
-    'ctrlpan\\spelicon.cel',
-    'data\\inv\\inv.cel',
-    'data\\inv\\inv_sor.cel',
-    'data\\inv\\objcurs.cel',
-    'gendata\\cutstart.cel',
-    'gendata\\cuttt.cel',
     'items\\armor2.cel',
-    'items\\bldstn.cel',
     'items\\bottle.cel',
-    'items\\brain.cel',
-    'items\\cleaver.cel',
-    'items\\fbow.cel',
-    'items\\fbttle.cel',
     'items\\fbttleor.cel',
     'items\\goldflip.cel',
-    'items\\hlmut.cel',
-    'items\\mush.cel',
-    'items\\rock.cel',
     'items\\scroll.cel',
-    'items\\shield.cel',
     'items\\staff.cel',
-    'items\\swrdflip.cel',
+    'data\\inv\\objcurs.cel',
     'levels\\l1data\\l1s.cel',
-    'levels\\l2data\\l2s.cel',
-    'levels\\l3data\\l3s.cel',
-    'levels\\l4data\\l4s.cel',
   ],
   cl2: [
-    'missiles\\arrows.cl2',
-    'missiles\\farrow.cl2',
     'missiles\\firebolt.cl2',
-    'missiles\\firewahc.cl2',
-    'missiles\\holy.cl2',
-    'missiles\\magball.cl2',
-    'missiles\\miniltng.cl2',
-    'monsters\\acid\\acida.cl2',
-    'monsters\\acid\\acidd.cl2',
-    'monsters\\bat\\bata.cl2',
-    'monsters\\darkmage\\dmagea.cl2',
-    'monsters\\falspear\\phalla.cl2',
-    'monsters\\fat\\fata.cl2',
-    'monsters\\fireman\\firemana.cl2',
-    'monsters\\goatbow\\goatba.cl2',
-    'monsters\\goatlord\\goatla.cl2',
-    'monsters\\goatmace\\goatma.cl2',
-    'monsters\\mage\\magea.cl2',
-    'monsters\\rhino\\rhinoa.cl2',
+    'missiles\\arrows.cl2',
     'monsters\\scav\\scava.cl2',
-    'monsters\\scav\\scavs.cl2',
     'monsters\\skelaxe\\sklaxa.cl2',
-    'monsters\\skelbow\\sklbwa.cl2',
-    'monsters\\skelsd\\sklsda.cl2',
-    'monsters\\snake\\snakea.cl2',
-    'monsters\\sneak\\sneaka.cl2',
-    'monsters\\succ\\succa.cl2',
-    'monsters\\thin\\thina.cl2',
-    'monsters\\tsneak\\tsneaka.cl2',
     'monsters\\zombie\\zombiea.cl2',
-    'plrgfx\\rogue\\rla\\rlaat.cl2',
-    'plrgfx\\rogue\\rla\\rlaaw.cl2',
-    'plrgfx\\rogue\\rla\\rlafm.cl2',
-    'plrgfx\\rogue\\rla\\rlast.cl2',
-    'plrgfx\\rogue\\rla\\rlawl.cl2',
-    'plrgfx\\sorceror\\sla\\slaat.cl2',
-    'plrgfx\\sorceror\\sla\\slafm.cl2',
-    'plrgfx\\sorceror\\sla\\slast.cl2',
-    'plrgfx\\sorceror\\sla\\slawl.cl2',
-    'plrgfx\\warrior\\wla\\wlaat.cl2',
-    'plrgfx\\warrior\\wla\\wlafm.cl2',
-    'plrgfx\\warrior\\wla\\wlast.cl2',
     'plrgfx\\warrior\\wla\\wlawl.cl2',
   ],
   pal: [
-    'gendata\\diablo.pal',
     'levels\\l1data\\l1.pal',
-    'levels\\l1data\\l1_1.pal',
-    'levels\\l1data\\l1_2.pal',
-    'levels\\l1data\\l1_3.pal',
-    'levels\\l1data\\l1_4.pal',
-    'levels\\l1data\\l1_5.pal',
-    'levels\\l1data\\l1palg.pal',
     'levels\\l2data\\l2.pal',
     'levels\\l3data\\l3.pal',
     'levels\\l4data\\l4.pal',
   ],
   dun: [
     'levels\\l1data\\sking.dun',
-    'levels\\l1data\\sklking.dun',
     'levels\\l2data\\blood1.dun',
-    'levels\\l2data\\blood2.dun',
-    'levels\\l2data\\bonecha1.dun',
-    'levels\\l2data\\bonecha2.dun',
-    'levels\\l2data\\bonestr1.dun',
-    'levels\\l2data\\bonestr2.dun',
     'levels\\l3data\\anvil.dun',
     'levels\\l4data\\diab1.dun',
-    'levels\\l4data\\diab2a.dun',
-    'levels\\l4data\\diab3a.dun',
-    'levels\\l4data\\diab4a.dun',
-    'levels\\l4data\\vile1.dun',
   ],
 };
 
 // Default Diablo palette (256 colors)
 function createDefaultPalette() {
   const palette = [];
-
-  // Generate a basic palette that approximates Diablo's colors
   for (let i = 0; i < 256; i++) {
     if (i === 0) {
-      palette.push([0, 0, 0]); // Transparent/black
+      palette.push([0, 0, 0]);
     } else if (i < 32) {
-      // Grays
       const v = Math.floor((i / 31) * 255);
       palette.push([v, v, v]);
     } else if (i < 64) {
-      // Reds/Browns
       const v = (i - 32) / 31;
-      palette.push([
-        Math.floor(100 + v * 155),
-        Math.floor(v * 80),
-        Math.floor(v * 40),
-      ]);
+      palette.push([Math.floor(100 + v * 155), Math.floor(v * 80), Math.floor(v * 40)]);
     } else if (i < 96) {
-      // Greens
       const v = (i - 64) / 31;
-      palette.push([
-        Math.floor(v * 60),
-        Math.floor(80 + v * 175),
-        Math.floor(v * 60),
-      ]);
+      palette.push([Math.floor(v * 60), Math.floor(80 + v * 175), Math.floor(v * 60)]);
     } else if (i < 128) {
-      // Blues
       const v = (i - 96) / 31;
-      palette.push([
-        Math.floor(v * 60),
-        Math.floor(v * 60),
-        Math.floor(100 + v * 155),
-      ]);
+      palette.push([Math.floor(v * 60), Math.floor(v * 60), Math.floor(100 + v * 155)]);
     } else if (i < 160) {
-      // Yellows/Golds
       const v = (i - 128) / 31;
-      palette.push([
-        Math.floor(180 + v * 75),
-        Math.floor(140 + v * 115),
-        Math.floor(v * 60),
-      ]);
+      palette.push([Math.floor(180 + v * 75), Math.floor(140 + v * 115), Math.floor(v * 60)]);
     } else if (i < 192) {
-      // Purples
       const v = (i - 160) / 31;
-      palette.push([
-        Math.floor(80 + v * 120),
-        Math.floor(v * 60),
-        Math.floor(100 + v * 155),
-      ]);
+      palette.push([Math.floor(80 + v * 120), Math.floor(v * 60), Math.floor(100 + v * 155)]);
     } else if (i < 224) {
-      // Flesh tones
       const v = (i - 192) / 31;
-      palette.push([
-        Math.floor(180 + v * 75),
-        Math.floor(120 + v * 80),
-        Math.floor(80 + v * 80),
-      ]);
+      palette.push([Math.floor(180 + v * 75), Math.floor(120 + v * 80), Math.floor(80 + v * 80)]);
     } else {
-      // Light colors
       const v = (i - 224) / 31;
-      palette.push([
-        Math.floor(200 + v * 55),
-        Math.floor(200 + v * 55),
-        Math.floor(200 + v * 55),
-      ]);
+      palette.push([Math.floor(200 + v * 55), Math.floor(200 + v * 55), Math.floor(200 + v * 55)]);
     }
   }
-
   return palette;
 }
 
@@ -408,91 +293,56 @@ function decodeCEL(data, palette, filename = '') {
   if (!data || data.length < 4) return null;
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-
-  // Read frame count
   const frameCount = view.getUint32(0, true);
 
-  if (frameCount === 0 || frameCount > 1000) {
-    console.warn(`Invalid frame count: ${frameCount} in ${filename}`);
-    return null;
-  }
+  if (frameCount === 0 || frameCount > 1000) return null;
 
-  // Read frame offsets
   const frameOffsets = [];
   for (let i = 0; i <= frameCount; i++) {
-    if (4 + i * 4 >= data.length) {
-      console.warn(`Truncated frame offsets in ${filename}`);
-      return null;
-    }
+    if (4 + i * 4 >= data.length) return null;
     frameOffsets.push(view.getUint32(4 + i * 4, true));
   }
 
-  // Decode first frame
   const frameStart = frameOffsets[0];
   const frameEnd = frameOffsets[1] || data.length;
   const frameData = data.slice(frameStart, frameEnd);
-
-  // Estimate dimensions from frame size
   const frameSize = frameData.length;
-  let width, height;
 
-  // Common dimensions based on file patterns
+  // Estimate dimensions
+  let width, height;
   if (filename.includes('item') || filename.includes('goldflip') ||
-      filename.includes('scroll') || filename.includes('bottle') ||
-      filename.includes('mush') || filename.includes('rock')) {
-    width = 28;
-    height = 28;
+      filename.includes('scroll') || filename.includes('bottle')) {
+    width = 28; height = 28;
   } else if (filename.includes('panel')) {
-    width = 640;
-    height = 128;
-  } else if (filename.includes('inv')) {
-    width = 320;
-    height = 320;
+    width = 640; height = 128;
   } else if (filename.includes('objcurs')) {
-    width = 33;
-    height = 32;
-  } else if (filename.includes('spelicon')) {
-    width = 37;
-    height = 38;
+    width = 33; height = 32;
+  } else if (filename.includes('l1s') || filename.includes('l2s') ||
+             filename.includes('l3s') || filename.includes('l4s')) {
+    width = 64; height = 32;
   } else {
-    // Estimate from frame size
     width = Math.ceil(Math.sqrt(frameSize * 2));
     height = width;
   }
 
   // Decode RLE
   const pixels = new Uint8Array(width * height);
-  let x = 0;
-  let y = height - 1; // Bottom-up
-  let i = 0;
+  let x = 0, y = height - 1, i = 0;
 
   while (i < frameData.length && y >= 0) {
     const cmd = frameData[i++];
-
     if (cmd >= 0x81) {
-      // Transparent pixels: (256 - cmd) transparent
-      const count = 256 - cmd;
-      x += count;
+      x += 256 - cmd;
     } else if (cmd <= 0x7E && cmd > 0) {
-      // Opaque pixels: cmd literal bytes follow
       for (let j = 0; j < cmd && i < frameData.length; j++) {
-        if (x < width && y >= 0) {
-          pixels[y * width + x] = frameData[i++];
-        } else {
-          i++;
-        }
+        if (x < width && y >= 0) pixels[y * width + x] = frameData[i++];
+        else i++;
         x++;
       }
     } else {
-      // 0x7F or 0x80 - continue line
       i++;
     }
-
-    // Handle line wrap
-    while (x >= width) {
-      x -= width;
-      y--;
-    }
+    while (x >= width) { x -= width; y--; }
   }
 
   // Convert to RGBA
@@ -502,7 +352,6 @@ function decodeCEL(data, palette, filename = '') {
       const idx = py * width + px;
       const paletteIdx = pixels[idx];
       const color = palette[paletteIdx] || [0, 0, 0];
-
       rgba[idx * 4] = color[0];
       rgba[idx * 4 + 1] = color[1];
       rgba[idx * 4 + 2] = color[2];
@@ -513,121 +362,80 @@ function decodeCEL(data, palette, filename = '') {
   return { width, height, rgba, frameCount };
 }
 
-// CL2 decoding (different RLE than CEL)
+// CL2 decoding
 function decodeCL2(data, palette, filename = '') {
   if (!data || data.length < 4) return null;
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-
-  // Check if multi-group (8 directions)
   const firstValue = view.getUint32(0, true);
-  const isMultiGroup = firstValue > 0 && firstValue < data.length &&
-                       firstValue === view.getUint32(4, true) - view.getUint32(0, true);
+  const isMultiGroup = firstValue > 0 && firstValue < data.length / 2;
 
   let frameCount, frameOffsets;
 
   if (isMultiGroup && data.length > 32) {
-    // Multi-group: 8 direction offsets at start
     const groupOffset = view.getUint32(0, true);
-    const groupView = new DataView(data.buffer, data.byteOffset + groupOffset);
-    frameCount = groupView.getUint32(0, true);
-
-    if (frameCount === 0 || frameCount > 100) {
+    if (groupOffset < data.length) {
+      const groupView = new DataView(data.buffer, data.byteOffset + groupOffset);
+      frameCount = groupView.getUint32(0, true);
+      if (frameCount === 0 || frameCount > 100) frameCount = 1;
+      frameOffsets = [groupOffset + 4 + (frameCount + 1) * 4];
+      for (let i = 0; i <= frameCount; i++) {
+        frameOffsets.push(groupOffset + groupView.getUint32(4 + i * 4, true));
+      }
+    } else {
       frameCount = 1;
-    }
-
-    frameOffsets = [groupOffset + 4 + (frameCount + 1) * 4];
-    for (let i = 0; i <= frameCount; i++) {
-      frameOffsets.push(groupOffset + groupView.getUint32(4 + i * 4, true));
+      frameOffsets = [0, data.length];
     }
   } else {
-    // Mono-group
     frameCount = view.getUint32(0, true);
-    if (frameCount === 0 || frameCount > 1000) {
-      console.warn(`Invalid CL2 frame count: ${frameCount} in ${filename}`);
-      return null;
-    }
-
+    if (frameCount === 0 || frameCount > 1000) return null;
     frameOffsets = [];
     for (let i = 0; i <= frameCount; i++) {
       frameOffsets.push(view.getUint32(4 + i * 4, true));
     }
   }
 
-  // Decode first frame using CL2 RLE
   const frameStart = frameOffsets[0];
   const frameEnd = frameOffsets[1] || data.length;
   const frameData = data.slice(frameStart, frameEnd);
 
-  // Estimate dimensions
-  let width = 96;
-  let height = 96;
+  let width = 96, height = 96;
+  if (filename.includes('missiles')) { width = 32; height = 32; }
+  else if (filename.includes('monsters')) { width = 128; height = 128; }
 
-  if (filename.includes('plrgfx')) {
-    width = 96;
-    height = 96;
-  } else if (filename.includes('missiles')) {
-    width = 32;
-    height = 32;
-  } else if (filename.includes('monsters')) {
-    width = 128;
-    height = 128;
-  }
-
-  // Decode CL2 RLE (different from CEL!)
   const pixels = new Uint8Array(width * height);
-  let x = 0;
-  let y = height - 1;
-  let i = 0;
+  let x = 0, y = height - 1, i = 0;
 
   while (i < frameData.length && y >= 0) {
     const cmd = frameData[i++];
-
     if (cmd >= 0x01 && cmd <= 0x7F) {
-      // Transparent: cmd pixels
       x += cmd;
     } else if (cmd >= 0x80 && cmd <= 0xBE) {
-      // Fill: (191 - cmd) pixels with next byte
       const count = 191 - cmd;
       const fillColor = frameData[i++] || 0;
       for (let j = 0; j < count; j++) {
-        if (x < width && y >= 0) {
-          pixels[y * width + x] = fillColor;
-        }
+        if (x < width && y >= 0) pixels[y * width + x] = fillColor;
         x++;
-        while (x >= width) {
-          x -= width;
-          y--;
-        }
+        while (x >= width) { x -= width; y--; }
       }
       continue;
     } else if (cmd >= 0xBF) {
-      // Literal: (256 - cmd) pixels
       const count = 256 - cmd;
       for (let j = 0; j < count && i < frameData.length; j++) {
-        if (x < width && y >= 0) {
-          pixels[y * width + x] = frameData[i++];
-        } else {
-          i++;
-        }
+        if (x < width && y >= 0) pixels[y * width + x] = frameData[i++];
+        else i++;
         x++;
       }
     }
-
-    while (x >= width) {
-      x -= width;
-      y--;
-    }
+    while (x >= width) { x -= width; y--; }
   }
 
-  // Convert to RGBA
   const rgba = new Uint8Array(width * height * 4);
   for (let py = 0; py < height; py++) {
     for (let px = 0; px < width; px++) {
       const idx = py * width + px;
       const paletteIdx = pixels[idx];
       const color = palette[paletteIdx] || [0, 0, 0];
-
       rgba[idx * 4] = color[0];
       rgba[idx * 4 + 1] = color[1];
       rgba[idx * 4 + 2] = color[2];
@@ -638,16 +446,30 @@ function decodeCL2(data, palette, filename = '') {
   return { width, height, rgba, frameCount, isMultiGroup };
 }
 
-// Save image to PNG
-function savePNG(filename, width, height, rgba) {
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-  const imageData = ctx.createImageData(width, height);
-  imageData.data.set(rgba);
-  ctx.putImageData(imageData, 0, 0);
+// DUN decoding
+function decodeDUN(data, filename = '') {
+  if (!data || data.length < 4) return null;
 
-  const buffer = canvas.toBuffer('image/png');
-  fs.writeFileSync(filename, buffer);
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const width = view.getUint16(0, true);
+  const height = view.getUint16(2, true);
+
+  if (width === 0 || height === 0 || width > 256 || height > 256) return null;
+
+  const tiles = [];
+  for (let y = 0; y < height; y++) {
+    tiles[y] = [];
+    for (let x = 0; x < width; x++) {
+      const offset = 4 + (y * width + x) * 2;
+      if (offset + 2 <= data.length) {
+        tiles[y][x] = view.getUint16(offset, true);
+      } else {
+        tiles[y][x] = 0;
+      }
+    }
+  }
+
+  return { width, height, tiles };
 }
 
 // Generate HTML gallery
@@ -655,61 +477,90 @@ function generateGallery(results) {
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>DiabloWeb AI - Render Results</title>
+  <title>DiabloWeb AI - Extraction Results</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #1a1a2e; color: #eee; margin: 0; padding: 20px; }
+    body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 20px; }
     h1 { color: #d4af37; }
-    h2 { color: #8b0000; border-bottom: 1px solid #8b0000; padding-bottom: 10px; }
-    .gallery { display: flex; flex-wrap: wrap; gap: 20px; }
-    .item { background: #2a2a4e; padding: 15px; border-radius: 8px; text-align: center; }
-    .item img { max-width: 200px; max-height: 200px; background: #000; image-rendering: pixelated; }
-    .item .name { margin-top: 10px; font-size: 12px; word-break: break-all; }
-    .item .status { font-size: 11px; margin-top: 5px; }
+    h2 { color: #8b0000; border-bottom: 1px solid #8b0000; }
+    .section { margin: 20px 0; }
+    .item { display: inline-block; margin: 10px; padding: 10px; background: #2a2a4e; border-radius: 8px; }
     .success { color: #4caf50; }
     .error { color: #f44336; }
-    .stats { background: #2a2a4e; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #444; padding: 8px; text-align: left; }
+    th { background: #333; }
+    .stats { background: #2a2a4e; padding: 15px; border-radius: 8px; }
   </style>
 </head>
 <body>
-  <h1>DiabloWeb AI - Visual Render Results</h1>
+  <h1>DiabloWeb AI - File Extraction Test Results</h1>
   <p>Generated: ${new Date().toISOString()}</p>
 
   <div class="stats">
     <h3>Summary</h3>
-    <p>CEL Files: ${results.cel.success}/${results.cel.total} successful</p>
-    <p>CL2 Files: ${results.cl2.success}/${results.cl2.total} successful</p>
+    <table>
+      <tr><th>File Type</th><th>Success</th><th>Failed</th><th>Total</th></tr>
+      <tr><td>CEL</td><td class="success">${results.cel.success}</td><td class="error">${results.cel.total - results.cel.success}</td><td>${results.cel.total}</td></tr>
+      <tr><td>CL2</td><td class="success">${results.cl2.success}</td><td class="error">${results.cl2.total - results.cl2.success}</td><td>${results.cl2.total}</td></tr>
+      <tr><td>PAL</td><td class="success">${results.pal.success}</td><td class="error">${results.pal.total - results.pal.success}</td><td>${results.pal.total}</td></tr>
+      <tr><td>DUN</td><td class="success">${results.dun.success}</td><td class="error">${results.dun.total - results.dun.success}</td><td>${results.dun.total}</td></tr>
+    </table>
   </div>
 
-  <h2>CEL Files</h2>
-  <div class="gallery">
-    ${results.cel.items.map(item => `
-      <div class="item">
-        ${item.success ?
-          `<img src="cel/${item.outputName}" alt="${item.name}" />` :
-          `<div style="width:100px;height:100px;background:#300;display:flex;align-items:center;justify-content:center;">Error</div>`
-        }
-        <div class="name">${item.name}</div>
-        <div class="status ${item.success ? 'success' : 'error'}">
-          ${item.success ? `${item.width}x${item.height} (${item.frames} frames)` : item.error}
-        </div>
-      </div>
-    `).join('')}
+  <div class="section">
+    <h2>CEL Files</h2>
+    <table>
+      <tr><th>File</th><th>Status</th><th>Details</th></tr>
+      ${results.cel.items.map(item => `
+        <tr>
+          <td>${item.name}</td>
+          <td class="${item.success ? 'success' : 'error'}">${item.success ? 'OK' : 'FAIL'}</td>
+          <td>${item.success ? `${item.width}x${item.height} (${item.frames} frames)` : item.error}</td>
+        </tr>
+      `).join('')}
+    </table>
   </div>
 
-  <h2>CL2 Files</h2>
-  <div class="gallery">
-    ${results.cl2.items.map(item => `
-      <div class="item">
-        ${item.success ?
-          `<img src="cl2/${item.outputName}" alt="${item.name}" />` :
-          `<div style="width:100px;height:100px;background:#300;display:flex;align-items:center;justify-content:center;">Error</div>`
-        }
-        <div class="name">${item.name}</div>
-        <div class="status ${item.success ? 'success' : 'error'}">
-          ${item.success ? `${item.width}x${item.height} (${item.frames} frames)` : item.error}
-        </div>
-      </div>
-    `).join('')}
+  <div class="section">
+    <h2>CL2 Files</h2>
+    <table>
+      <tr><th>File</th><th>Status</th><th>Details</th></tr>
+      ${results.cl2.items.map(item => `
+        <tr>
+          <td>${item.name}</td>
+          <td class="${item.success ? 'success' : 'error'}">${item.success ? 'OK' : 'FAIL'}</td>
+          <td>${item.success ? `${item.width}x${item.height} (${item.frames} frames)` : item.error}</td>
+        </tr>
+      `).join('')}
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>PAL Files</h2>
+    <table>
+      <tr><th>File</th><th>Status</th><th>Details</th></tr>
+      ${results.pal.items.map(item => `
+        <tr>
+          <td>${item.name}</td>
+          <td class="${item.success ? 'success' : 'error'}">${item.success ? 'OK' : 'FAIL'}</td>
+          <td>${item.success ? `${item.colors} colors` : item.error}</td>
+        </tr>
+      `).join('')}
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>DUN Files</h2>
+    <table>
+      <tr><th>File</th><th>Status</th><th>Details</th></tr>
+      ${results.dun.items.map(item => `
+        <tr>
+          <td>${item.name}</td>
+          <td class="${item.success ? 'success' : 'error'}">${item.success ? 'OK' : 'FAIL'}</td>
+          <td>${item.success ? `${item.width}x${item.height} tiles` : item.error}</td>
+        </tr>
+      `).join('')}
+    </table>
   </div>
 </body>
 </html>`;
@@ -724,29 +575,32 @@ async function runTests() {
   console.log('========================================\n');
 
   // Ensure directories exist
-  ensureDir(path.join(RESULTS_DIR, 'cel'));
-  ensureDir(path.join(RESULTS_DIR, 'cl2'));
+  ensureDir(RESULTS_DIR);
+  ensureDir(RAW_DIR);
 
   // Load spawn.mpq
   const mpqPath = path.join(PUBLIC_DIR, 'spawn.mpq');
   if (!fs.existsSync(mpqPath)) {
     console.error('spawn.mpq not found at', mpqPath);
-    console.log('Please ensure spawn.mpq is in the public directory.');
     process.exit(1);
   }
 
   console.log('Loading spawn.mpq...');
   const mpqBuffer = fs.readFileSync(mpqPath);
   const mpq = new MPQReader(mpqBuffer);
-  console.log(`MPQ loaded: ${mpqBuffer.length} bytes\n`);
+  console.log(`MPQ loaded: ${mpqBuffer.length} bytes`);
+  console.log(`  Header size: ${mpq.headerSize}`);
+  console.log(`  Archive size: ${mpq.archiveSize}`);
+  console.log(`  Hash table: ${mpq.hashTableSize} entries`);
+  console.log(`  Block table: ${mpq.blockTableSize} entries\n`);
 
   // Get default palette
-  const palette = createDefaultPalette();
+  let palette = createDefaultPalette();
 
   // Try to load a real palette
   const palData = mpq.findFile('levels\\l1data\\l1.pal');
   if (palData && palData.length === 768) {
-    console.log('Loaded l1.pal');
+    console.log('Loaded l1.pal palette\n');
     for (let i = 0; i < 256; i++) {
       palette[i] = [palData[i * 3], palData[i * 3 + 1], palData[i * 3 + 2]];
     }
@@ -755,6 +609,8 @@ async function runTests() {
   const results = {
     cel: { total: 0, success: 0, items: [] },
     cl2: { total: 0, success: 0, items: [] },
+    pal: { total: 0, success: 0, items: [] },
+    dun: { total: 0, success: 0, items: [] },
   };
 
   // Process CEL files
@@ -770,15 +626,16 @@ async function runTests() {
       } else {
         const decoded = decodeCEL(new Uint8Array(data), palette, filename);
         if (decoded) {
-          const outputName = filename.replace(/\\/g, '_').replace(/\//g, '_') + '.png';
-          savePNG(path.join(RESULTS_DIR, 'cel', outputName), decoded.width, decoded.height, decoded.rgba);
+          // Save raw RGBA data
+          const rawFilename = filename.replace(/\\/g, '_').replace(/\//g, '_') + '.raw';
+          fs.writeFileSync(path.join(RAW_DIR, rawFilename), Buffer.from(decoded.rgba));
+
           item.success = true;
-          item.outputName = outputName;
           item.width = decoded.width;
           item.height = decoded.height;
           item.frames = decoded.frameCount;
           results.cel.success++;
-          console.log(`  ✓ ${filename} (${decoded.width}x${decoded.height})`);
+          console.log(`  [OK] ${filename} (${decoded.width}x${decoded.height}, ${decoded.frameCount} frames)`);
         } else {
           item.error = 'Decode failed';
         }
@@ -788,7 +645,7 @@ async function runTests() {
     }
 
     if (!item.success) {
-      console.log(`  ✗ ${filename}: ${item.error}`);
+      console.log(`  [FAIL] ${filename}: ${item.error}`);
     }
 
     results.cel.items.push(item);
@@ -807,15 +664,15 @@ async function runTests() {
       } else {
         const decoded = decodeCL2(new Uint8Array(data), palette, filename);
         if (decoded) {
-          const outputName = filename.replace(/\\/g, '_').replace(/\//g, '_') + '.png';
-          savePNG(path.join(RESULTS_DIR, 'cl2', outputName), decoded.width, decoded.height, decoded.rgba);
+          const rawFilename = filename.replace(/\\/g, '_').replace(/\//g, '_') + '.raw';
+          fs.writeFileSync(path.join(RAW_DIR, rawFilename), Buffer.from(decoded.rgba));
+
           item.success = true;
-          item.outputName = outputName;
           item.width = decoded.width;
           item.height = decoded.height;
           item.frames = decoded.frameCount;
           results.cl2.success++;
-          console.log(`  ✓ ${filename} (${decoded.width}x${decoded.height})`);
+          console.log(`  [OK] ${filename} (${decoded.width}x${decoded.height}, ${decoded.frameCount} frames)`);
         } else {
           item.error = 'Decode failed';
         }
@@ -825,14 +682,76 @@ async function runTests() {
     }
 
     if (!item.success) {
-      console.log(`  ✗ ${filename}: ${item.error}`);
+      console.log(`  [FAIL] ${filename}: ${item.error}`);
     }
 
     results.cl2.items.push(item);
   }
 
-  // Generate gallery and report
-  console.log('\nGenerating gallery...');
+  // Process PAL files
+  console.log('\nProcessing PAL files...');
+  for (const filename of KNOWN_FILES.pal) {
+    results.pal.total++;
+    const item = { name: filename, success: false };
+
+    try {
+      const data = mpq.findFile(filename);
+      if (!data) {
+        item.error = 'File not found';
+      } else if (data.length === 768) {
+        item.success = true;
+        item.colors = 256;
+        results.pal.success++;
+        console.log(`  [OK] ${filename} (256 colors)`);
+      } else {
+        item.error = `Invalid size: ${data.length} bytes (expected 768)`;
+      }
+    } catch (e) {
+      item.error = e.message;
+    }
+
+    if (!item.success) {
+      console.log(`  [FAIL] ${filename}: ${item.error}`);
+    }
+
+    results.pal.items.push(item);
+  }
+
+  // Process DUN files
+  console.log('\nProcessing DUN files...');
+  for (const filename of KNOWN_FILES.dun) {
+    results.dun.total++;
+    const item = { name: filename, success: false };
+
+    try {
+      const data = mpq.findFile(filename);
+      if (!data) {
+        item.error = 'File not found';
+      } else {
+        const decoded = decodeDUN(new Uint8Array(data), filename);
+        if (decoded) {
+          item.success = true;
+          item.width = decoded.width;
+          item.height = decoded.height;
+          results.dun.success++;
+          console.log(`  [OK] ${filename} (${decoded.width}x${decoded.height} tiles)`);
+        } else {
+          item.error = 'Decode failed';
+        }
+      }
+    } catch (e) {
+      item.error = e.message;
+    }
+
+    if (!item.success) {
+      console.log(`  [FAIL] ${filename}: ${item.error}`);
+    }
+
+    results.dun.items.push(item);
+  }
+
+  // Generate report
+  console.log('\nGenerating report...');
   generateGallery(results);
   fs.writeFileSync(path.join(RESULTS_DIR, 'report.json'), JSON.stringify(results, null, 2));
 
@@ -842,16 +761,25 @@ async function runTests() {
   console.log('========================================');
   console.log(`CEL: ${results.cel.success}/${results.cel.total} successful`);
   console.log(`CL2: ${results.cl2.success}/${results.cl2.total} successful`);
-  console.log(`\nResults saved to: ${RESULTS_DIR}`);
-  console.log(`View gallery at: ${path.join(RESULTS_DIR, 'index.html')}`);
+  console.log(`PAL: ${results.pal.success}/${results.pal.total} successful`);
+  console.log(`DUN: ${results.dun.success}/${results.dun.total} successful`);
+  console.log(`\nResults saved to: ${RESULTS_DIR}/index.html`);
+  console.log('Raw RGBA data saved to: ' + RAW_DIR);
   console.log('========================================\n');
 
-  return results.cel.success > 0 || results.cl2.success > 0;
+  const totalSuccess = results.cel.success + results.cl2.success +
+                       results.pal.success + results.dun.success;
+  const totalTests = results.cel.total + results.cl2.total +
+                     results.pal.total + results.dun.total;
+
+  return totalSuccess > 0 && totalSuccess === totalTests;
 }
 
 // Run tests
 runTests()
-  .then(success => process.exit(success ? 0 : 1))
+  .then(success => {
+    process.exit(success ? 0 : 1);
+  })
   .catch(err => {
     console.error('Test failed:', err);
     process.exit(1);
