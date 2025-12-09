@@ -838,18 +838,21 @@ export class CampaignBlueprintPanel extends Component {
         {/* Character Lists */}
         <div className="characters-lists">
           <div className="character-section">
-            <h5>NPCs ({blueprint.characters.npcs.length})</h5>
-            {blueprint.characters.npcs.map(char => (
+            <h5>NPCs ({blueprint.characters?.npcs?.length || 0})</h5>
+            {(blueprint.characters?.npcs || []).map(char => (
               <div key={char.id} className="character-item">
                 <span className="char-role">{char.role}</span>
                 <span className="char-name">{char.name}</span>
               </div>
             ))}
+            {(!blueprint.characters?.npcs || blueprint.characters.npcs.length === 0) && (
+              <div className="empty-state">No NPCs defined</div>
+            )}
           </div>
 
           <div className="character-section">
-            <h5>Bosses ({blueprint.characters.bosses.length})</h5>
-            {blueprint.characters.bosses.map(char => (
+            <h5>Bosses ({blueprint.characters?.bosses?.length || 0})</h5>
+            {(blueprint.characters?.bosses || []).map(char => (
               <div key={char.id} className="character-item boss">
                 <span className="char-name">{char.name}</span>
                 {char.baseAsset && (
@@ -857,15 +860,21 @@ export class CampaignBlueprintPanel extends Component {
                 )}
               </div>
             ))}
+            {(!blueprint.characters?.bosses || blueprint.characters.bosses.length === 0) && (
+              <div className="empty-state">No bosses defined</div>
+            )}
           </div>
 
           <div className="character-section">
-            <h5>Enemies ({blueprint.characters.enemies.length})</h5>
-            {blueprint.characters.enemies.map(char => (
+            <h5>Enemies ({blueprint.characters?.enemies?.length || 0})</h5>
+            {(blueprint.characters?.enemies || []).map(char => (
               <div key={char.id} className="character-item">
                 <span className="char-name">{char.name}</span>
               </div>
             ))}
+            {(!blueprint.characters?.enemies || blueprint.characters.enemies.length === 0) && (
+              <div className="empty-state">No enemies defined</div>
+            )}
           </div>
         </div>
       </div>
@@ -895,8 +904,8 @@ export class CampaignBlueprintPanel extends Component {
 
         <div className="quests-sections">
           <div className="quest-section">
-            <h5>Main Quests ({blueprint.quests.main.length})</h5>
-            {blueprint.quests.main.map(quest => (
+            <h5>Main Quests ({blueprint.quests?.main?.length || 0})</h5>
+            {(blueprint.quests?.main || []).map(quest => (
               <div key={quest.id} className="quest-card">
                 <input
                   type="text"
@@ -918,16 +927,19 @@ export class CampaignBlueprintPanel extends Component {
                 />
                 <div className="quest-objectives">
                   <span className="objectives-label">
-                    {quest.objectives.length} objective(s)
+                    {quest.objectives?.length || 0} objective(s)
                   </span>
                 </div>
               </div>
             ))}
+            {(!blueprint.quests?.main || blueprint.quests.main.length === 0) && (
+              <div className="empty-state">No main quests defined</div>
+            )}
           </div>
 
           <div className="quest-section">
-            <h5>Side Quests ({blueprint.quests.side.length})</h5>
-            {blueprint.quests.side.map(quest => (
+            <h5>Side Quests ({blueprint.quests?.side?.length || 0})</h5>
+            {(blueprint.quests?.side || []).map(quest => (
               <div key={quest.id} className="quest-card side">
                 <input
                   type="text"
@@ -948,6 +960,9 @@ export class CampaignBlueprintPanel extends Component {
                 />
               </div>
             ))}
+            {(!blueprint.quests?.side || blueprint.quests.side.length === 0) && (
+              <div className="empty-state">No side quests defined</div>
+            )}
           </div>
         </div>
       </div>
