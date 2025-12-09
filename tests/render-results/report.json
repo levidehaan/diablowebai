@@ -1,140 +1,255 @@
 {
   "cel": {
-    "total": 9,
-    "success": 0,
+    "total": 15,
+    "success": 15,
     "items": [
       {
-        "name": "ctrlpan\\panel8.cel",
-        "success": false,
-        "error": "Decode failed"
-      },
-      {
-        "name": "items\\armor2.cel",
-        "success": false,
-        "error": "Decode failed"
-      },
-      {
-        "name": "items\\bottle.cel",
-        "success": false,
-        "error": "Decode failed"
-      },
-      {
         "name": "items\\fbttleor.cel",
-        "success": false,
-        "error": "Decode failed"
+        "success": true,
+        "details": "56x56 (16 frames, 15274 pixels)"
       },
       {
-        "name": "items\\goldflip.cel",
-        "success": false,
-        "error": "Decode failed"
+        "name": "missiles\\flamel16.cel",
+        "success": true,
+        "details": "96x96 (7 frames, 9130 pixels)"
       },
       {
-        "name": "items\\scroll.cel",
-        "success": false,
-        "error": "Decode failed"
+        "name": "missiles\\flames12.cel",
+        "success": true,
+        "details": "96x96 (4 frames, 9130 pixels)"
       },
       {
-        "name": "items\\staff.cel",
-        "success": false,
-        "error": "Decode failed"
+        "name": "objects\\skulstik.cel",
+        "success": true,
+        "details": "96x96 (5 frames, 9130 pixels)"
       },
       {
-        "name": "data\\inv\\objcurs.cel",
-        "success": false,
-        "error": "Decode failed"
+        "name": "data\\option.cel",
+        "success": true,
+        "details": "28x27 (1 frames, 756 pixels)"
       },
       {
-        "name": "levels\\l1data\\l1s.cel",
-        "success": false,
-        "error": "Decode failed"
+        "name": "items\\crownf.cel",
+        "success": true,
+        "details": "56x56 (13 frames, 12202 pixels)"
+      },
+      {
+        "name": "towners\\townwmn1\\wmnw.cel",
+        "success": true,
+        "details": "96x96 (32 frames, 71578 pixels)"
+      },
+      {
+        "name": "items\\larmor.cel",
+        "success": true,
+        "details": "56x56 (13 frames, 12202 pixels)"
+      },
+      {
+        "name": "missiles\\flams4.cel",
+        "success": true,
+        "details": "96x96 (13 frames, 16266 pixels)"
+      },
+      {
+        "name": "objects\\banner.cel",
+        "success": true,
+        "details": "96x96 (3 frames, 9130 pixels)"
+      },
+      {
+        "name": "missiles\\flames3.cel",
+        "success": true,
+        "details": "96x96 (4 frames, 12170 pixels)"
+      },
+      {
+        "name": "objects\\bkurns.cel",
+        "success": true,
+        "details": "96x96 (10 frames, 9130 pixels)"
+      },
+      {
+        "name": "missiles\\flamel4.cel",
+        "success": true,
+        "details": "96x96 (7 frames, 9130 pixels)"
+      },
+      {
+        "name": "data\\square.cel",
+        "success": true,
+        "details": "96x96 (1 frames, 8172 pixels)"
+      },
+      {
+        "name": "towners\\townboy\\pegkid1.cel",
+        "success": true,
+        "details": "96x96 (20 frames, 6058 pixels)"
       }
     ]
   },
   "cl2": {
-    "total": 6,
-    "success": 0,
+    "total": 15,
+    "success": 15,
     "items": [
       {
-        "name": "missiles\\firebolt.cl2",
-        "success": false,
-        "error": "File not found"
+        "name": "plrgfx\\warrior\\wlh\\wlhwl.cl2",
+        "success": true,
+        "details": "96x96 (8 frames, 8-dir)"
       },
       {
-        "name": "missiles\\arrows.cl2",
-        "success": false,
-        "error": "Decode failed"
+        "name": "monsters\\scav\\scavs.cl2",
+        "success": true,
+        "details": "128x128 (11 frames, 8-dir)"
       },
       {
-        "name": "monsters\\scav\\scava.cl2",
-        "success": false,
-        "error": "Decode failed"
+        "name": "monsters\\skelsd\\sklsrs.cl2",
+        "success": true,
+        "details": "128x128 (16 frames, 8-dir)"
       },
       {
-        "name": "monsters\\skelaxe\\sklaxa.cl2",
-        "success": false,
-        "error": "Decode failed"
+        "name": "missiles\\magball4.cl2",
+        "success": true,
+        "details": "96x96 (16 frames, mono)"
       },
       {
-        "name": "monsters\\zombie\\zombiea.cl2",
-        "success": false,
-        "error": "Decode failed"
+        "name": "missiles\\newexp.cl2",
+        "success": true,
+        "details": "96x96 (15 frames, mono)"
       },
       {
-        "name": "plrgfx\\warrior\\wla\\wlawl.cl2",
-        "success": false,
-        "error": "Decode failed"
+        "name": "plrgfx\\warrior\\wlb\\wlbqm.cl2",
+        "success": true,
+        "details": "96x96 (20 frames, 8-dir)"
+      },
+      {
+        "name": "missiles\\bone2.cl2",
+        "success": true,
+        "details": "96x96 (8 frames, mono)"
+      },
+      {
+        "name": "missiles\\farrow6.cl2",
+        "success": true,
+        "details": "96x96 (24 frames, 8-dir)"
+      },
+      {
+        "name": "missiles\\fireba7.cl2",
+        "success": true,
+        "details": "96x96 (14 frames, mono)"
+      },
+      {
+        "name": "monsters\\falsword\\falln.cl2",
+        "success": true,
+        "details": "128x128 (12 frames, 8-dir)"
+      },
+      {
+        "name": "missiles\\holy16.cl2",
+        "success": true,
+        "details": "96x96 (14 frames, mono)"
+      },
+      {
+        "name": "plrgfx\\warrior\\wln\\wlnlm.cl2",
+        "success": true,
+        "details": "96x96 (21 frames, 8-dir)"
+      },
+      {
+        "name": "plrgfx\\warrior\\wln\\wlnqm.cl2",
+        "success": true,
+        "details": "96x96 (20 frames, 8-dir)"
+      },
+      {
+        "name": "missiles\\acidbf5.cl2",
+        "success": true,
+        "details": "96x96 (8 frames, mono)"
+      },
+      {
+        "name": "missiles\\larrow1.cl2",
+        "success": true,
+        "details": "96x96 (24 frames, 8-dir)"
       }
     ]
   },
   "pal": {
-    "total": 4,
-    "success": 0,
+    "total": 8,
+    "success": 8,
     "items": [
       {
+        "name": "gendata\\cutl1d.pal",
+        "success": true,
+        "details": "256 colors (768 bytes)"
+      },
+      {
+        "name": "levels\\l1data\\l1_5.pal",
+        "success": true,
+        "details": "256 colors (768 bytes)"
+      },
+      {
+        "name": "gendata\\cut4.pal",
+        "success": true,
+        "details": "256 colors (768 bytes)"
+      },
+      {
+        "name": "levels\\l1data\\l1_3.pal",
+        "success": true,
+        "details": "256 colors (768 bytes)"
+      },
+      {
+        "name": "levels\\l1data\\l1_2.pal",
+        "success": true,
+        "details": "256 colors (768 bytes)"
+      },
+      {
+        "name": "gendata\\cutportr.pal",
+        "success": true,
+        "details": "256 colors (768 bytes)"
+      },
+      {
+        "name": "items\\swrdflip.pal",
+        "success": true,
+        "details": "256 colors (2838 bytes)"
+      },
+      {
         "name": "levels\\l1data\\l1.pal",
-        "success": false,
-        "error": "Invalid size: 776 bytes (expected 768)"
-      },
-      {
-        "name": "levels\\l2data\\l2.pal",
-        "success": false,
-        "error": "File not found"
-      },
-      {
-        "name": "levels\\l3data\\l3.pal",
-        "success": false,
-        "error": "File not found"
-      },
-      {
-        "name": "levels\\l4data\\l4.pal",
-        "success": false,
-        "error": "File not found"
+        "success": true,
+        "details": "256 colors (768 bytes)"
       }
     ]
   },
   "dun": {
-    "total": 4,
-    "success": 0,
+    "total": 8,
+    "success": 8,
     "items": [
       {
-        "name": "levels\\l1data\\sking.dun",
-        "success": false,
-        "error": "File not found"
+        "name": "levels\\l1data\\vile2.dun",
+        "success": true,
+        "details": "21x23 tiles"
       },
       {
-        "name": "levels\\l2data\\blood1.dun",
-        "success": false,
-        "error": "File not found"
+        "name": "levels\\l1data\\rnd5.dun",
+        "success": true,
+        "details": "9x9 tiles"
       },
       {
-        "name": "levels\\l3data\\anvil.dun",
-        "success": false,
-        "error": "File not found"
+        "name": "levels\\l1data\\hero1.dun",
+        "success": true,
+        "details": "8x8 tiles"
       },
       {
-        "name": "levels\\l4data\\diab1.dun",
-        "success": false,
-        "error": "File not found"
+        "name": "levels\\l1data\\rnd6.dun",
+        "success": true,
+        "details": "6x6 tiles"
+      },
+      {
+        "name": "levels\\l1data\\lv1mazea.dun",
+        "success": true,
+        "details": "45x35 tiles"
+      },
+      {
+        "name": "levels\\l1data\\hero2.dun",
+        "success": true,
+        "details": "8x8 tiles"
+      },
+      {
+        "name": "levels\\l1data\\sklkng2.dun",
+        "success": true,
+        "details": "37x25 tiles"
+      },
+      {
+        "name": "levels\\towndata\\sector2s.dun",
+        "success": true,
+        "details": "25x23 tiles"
       }
     ]
   }
