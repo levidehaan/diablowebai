@@ -94,6 +94,7 @@ const COMMON_OBJECTS = [
 export const FILE_TYPES = {
   DUN: { ext: '.dun', name: 'Level Layout', icon: '🗺️', color: '#4a9' },
   PAL: { ext: '.pal', name: 'Palette', icon: '🎨', color: '#a4a' },
+  TRN: { ext: '.trn', name: 'Color Transform', icon: '🔄', color: '#a84' },
   MIN: { ext: '.min', name: 'Minimap', icon: '📍', color: '#49a' },
   TIL: { ext: '.til', name: 'Tile Defs', icon: '🧱', color: '#a94' },
   SOL: { ext: '.sol', name: 'Collision', icon: '🚧', color: '#944' },
@@ -294,6 +295,72 @@ export function PaletteViewer({ data, filename }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * TRNViewer - Display TRN color translation table
+ * TRN files are 256-byte lookup tables that remap palette indices
+ */
+export function TRNViewer({ data, filename }) {
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [hoverIndex, setHoverIndex] = useState(null);
+
+  if (!data || data.length < 256) {
+    return <div className="trn-viewer-empty">Invalid TRN data (need 256 bytes)</div>;
+  }
+
+  const bytes = new Uint8Array(data);
+  const mappings = [];
+
+  for (let i = 0; i < 256; i++) {
+    mappings.push({
+      from: i,
+      to: bytes[i],
+      changed: i !== bytes[i],
+    });
+  }
+
+  const activeMapping = hoverIndex !== null ? mappings[hoverIndex] : (selectedIndex !== null ? mappings[selectedIndex] : null);
+  const changedCount = mappings.filter(m => m.changed).length;
+
+  return (
+    <div className="trn-viewer">
+      <div className="trn-header">
+        <span className="trn-filename">{filename}</span>
+        <span className="trn-info">256 mappings | {changedCount} changed</span>
+      </div>
+      <div className="trn-grid">
+        {mappings.map((mapping, i) => (
+          <div
+            key={i}
+            className={`trn-cell ${mapping.changed ? 'changed' : ''} ${selectedIndex === i ? 'selected' : ''}`}
+            style={{
+              backgroundColor: mapping.changed ? `hsl(${(mapping.to / 256) * 360}, 70%, 30%)` : '#222',
+            }}
+            onClick={() => setSelectedIndex(i)}
+            onMouseEnter={() => setHoverIndex(i)}
+            onMouseLeave={() => setHoverIndex(null)}
+            title={`${i} -> ${mapping.to}`}
+          >
+            {mapping.changed ? mapping.to : ''}
+          </div>
+        ))}
+      </div>
+      {activeMapping && (
+        <div className="trn-selection">
+          <div className="trn-details">
+            <div><strong>Input Index:</strong> {activeMapping.from} (0x{activeMapping.from.toString(16).toUpperCase().padStart(2, '0')})</div>
+            <div><strong>Output Index:</strong> {activeMapping.to} (0x{activeMapping.to.toString(16).toUpperCase().padStart(2, '0')})</div>
+            <div><strong>Status:</strong> {activeMapping.changed ? 'Remapped' : 'Unchanged'}</div>
+          </div>
+        </div>
+      )}
+      <div className="trn-description">
+        <p>TRN files remap palette colors. Each byte maps an input palette index to an output index.</p>
+        <p>Used to create color variations of sprites (e.g., different monster types).</p>
+      </div>
     </div>
   );
 }
@@ -2513,11 +2580,10 @@ export default {
   SOLViewer,
   MINViewer,
   TILViewer,
+  TRNViewer,
   CELViewer,
   CL2Viewer,
   FileInfo,
-  CELViewer,
-  CL2Viewer,
   PCXViewer,
   getFileType,
   getFileCategory

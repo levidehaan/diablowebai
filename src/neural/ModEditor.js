@@ -19,7 +19,7 @@ import { MpqReader } from '../api/savefile';
 import { CampaignPackageLoader } from './CampaignPackage';
 import { LevelPreview, MiniMap } from './LevelPreview';
 import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
-import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, FileInfo, CELViewer, CL2Viewer, PCXViewer, getFileType, getFileCategory } from './FileViewer';
+import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, TRNViewer, FileInfo, CELViewer, CL2Viewer, PCXViewer, getFileType, getFileCategory } from './FileViewer';
 import { CampaignBlueprint } from './CampaignBlueprint';
 import { parsePalette } from './CELEncoder';
 
@@ -1231,97 +1231,12 @@ export class ModEditor extends Component {
                   />
                 )}
 
-                {/* DUN Preview */}
-                {viewMode === 'preview' && selectedFileType?.key === 'DUN' && previewDunData && (
-                  <div className="level-preview-container">
-                    <div className="dun-preview-controls">
-                      <button
-                        className={`btn btn-small ${previewMode === 'visual' ? 'active' : ''}`}
-                        onClick={() => this.setState({ previewMode: 'visual' })}
-                      >
-                        Visual
-                      </button>
-                      <button
-                        className={`btn btn-small ${previewMode === 'ascii' ? 'active' : ''}`}
-                        onClick={() => this.setState({ previewMode: 'ascii' })}
-                      >
-                        ASCII
-                      </button>
-                      <label className="preview-toggle">
-                        <input
-                          type="checkbox"
-                          checked={showMonsters}
-                          onChange={(e) => this.setState({ showMonsters: e.target.checked })}
-                        />
-                        Monsters
-                      </label>
-                      <label className="preview-toggle">
-                        <input
-                          type="checkbox"
-                          checked={showItems}
-                          onChange={(e) => this.setState({ showItems: e.target.checked })}
-                        />
-                        Items
-                      </label>
-                    </div>
-
-                    {previewMode === 'visual' && (
-                      <LevelPreview
-                        dunData={previewDunData}
-                        theme={previewTheme}
-                        showMonsters={showMonsters}
-                        showItems={showItems}
-                        maxWidth={400}
-                        maxHeight={400}
-                      />
-                    )}
-
-                    {previewMode === 'ascii' && previewContent && (
-                      <pre className="ascii-level-preview">{previewContent}</pre>
-                    )}
-
-                    <div className="level-details">
-                      <h4>Level Details</h4>
-                      <div className="stat-row">
-                        <span className="stat-label">Theme</span>
-                        <span className="stat-value">{previewTheme}</span>
-                      </div>
-                      {previewStats && (
-                        <>
-                          <div className="stat-row">
-                            <span className="stat-label">Dimensions</span>
-                            <span className="stat-value">{previewStats.width}×{previewStats.height}</span>
-                          </div>
-                          <div className="stat-row">
-                            <span className="stat-label">Floors</span>
-                            <span className="stat-value">{previewStats.floorCount}</span>
-                          </div>
-                          <div className="stat-row">
-                            <span className="stat-label">Walls</span>
-                            <span className="stat-value">{previewStats.wallCount}</span>
-                          </div>
-                          {previewStats.monsterCount > 0 && (
-                            <div className="stat-row">
-                              <span className="stat-label">Monsters</span>
-                              <span className="stat-value">{previewStats.monsterCount}</span>
-                            </div>
-                          )}
-                          <div className="stat-row">
-                            <span className="stat-label">Stairs Up</span>
-                            <span className={`stat-value ${previewStats.stairsUp > 0 ? 'valid' : 'invalid'}`}>
-                              {previewStats.stairsUp > 0 ? '✓' : '✗'}
-                            </span>
-                          </div>
-                          <div className="stat-row">
-                            <span className="stat-label">Stairs Down</span>
-                            <span className={`stat-value ${previewStats.stairsDown > 0 ? 'valid' : 'invalid'}`}>
-                              {previewStats.stairsDown > 0 ? '✓' : '✗'}
-                            </span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
+                {/* DUN Preview - Use DUNEditor in read-only mode */}
+                {viewMode === 'preview' && selectedFileType?.key === 'DUN' && selectedFileData && (
+                  <DUNEditor
+                    data={selectedFileData}
+                    filename={selectedFile}
+                  />
                 )}
 
                 {/* DUN Editor */}
@@ -1426,8 +1341,16 @@ export class ModEditor extends Component {
                   />
                 )}
 
+                {/* TRN Color Transform Viewer */}
+                {viewMode === 'preview' && selectedFileType?.key === 'TRN' && selectedFileData && (
+                  <TRNViewer
+                    data={selectedFileData}
+                    filename={selectedFile}
+                  />
+                )}
+
                 {/* Generic file preview (not yet supported) */}
-                {viewMode === 'preview' && !['DUN', 'PAL', 'SOL', 'MIN', 'TIL', 'WAV', 'CEL', 'CL2', 'PCX'].includes(selectedFileType?.key) && (
+                {viewMode === 'preview' && !['DUN', 'PAL', 'SOL', 'MIN', 'TIL', 'WAV', 'CEL', 'CL2', 'PCX', 'TRN'].includes(selectedFileType?.key) && (
                   <div className="generic-file-info">
                     <p>File type: <strong>{selectedFileType?.name}</strong></p>
                     <p>Size: <strong>{selectedFileData ? selectedFileData.byteLength?.toLocaleString() || 'N/A' : 'Loading...'} bytes</strong></p>
