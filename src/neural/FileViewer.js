@@ -302,7 +302,6 @@ export function PaletteViewer({ data, filename }) {
  * DUNEditor - Interactive level editor
  */
 export function DUNEditor({ data, filename, onModify, onSave }) {
-  const canvasRef = useRef(null);
   const [dunData, setDunData] = useState(null);
   const [selectedTile, setSelectedTile] = useState(null);
   const [hoveredTile, setHoveredTile] = useState(null);
@@ -547,101 +546,6 @@ export function DUNEditor({ data, filename, onModify, onSave }) {
     }
   }, [exportDUN, onSave, filename]);
 
-  // Render canvas
-  useEffect(() => {
-    if (!dunData || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const { width, height, baseLayer, subLayers } = dunData;
-
-    canvas.width = width * zoom;
-    canvas.height = height * zoom;
-
-    // Clear
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw tiles
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const tileId = baseLayer[y][x];
-        const px = x * zoom;
-        const py = y * zoom;
-
-        // Color based on tile type
-        ctx.fillStyle = getTileColor(tileId);
-        ctx.fillRect(px, py, zoom, zoom);
-
-        // Grid lines
-        if (showGrid && zoom >= 4) {
-          ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-          ctx.strokeRect(px, py, zoom, zoom);
-        }
-
-        // Tile ID text for larger zoom
-        if (zoom >= 16 && tileId > 0) {
-          ctx.fillStyle = 'rgba(255,255,255,0.7)';
-          ctx.font = `${Math.max(8, zoom / 3)}px monospace`;
-          ctx.textAlign = 'center';
-          ctx.fillText(tileId.toString(), px + zoom / 2, py + zoom / 2 + 3);
-        }
-      }
-    }
-
-    // Draw monsters layer
-    if (layer === 'monsters' || layer === 'base') {
-      const monsters = subLayers.monsters;
-      if (monsters && monsters.length > 0) {
-        for (let y = 0; y < monsters.length; y++) {
-          for (let x = 0; x < monsters[y].length; x++) {
-            const monsterId = monsters[y][x];
-            if (monsterId > 0) {
-              const px = (x / 2) * zoom + (x % 2) * zoom / 2;
-              const py = (y / 2) * zoom + (y % 2) * zoom / 2;
-              ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
-              ctx.beginPath();
-              ctx.arc(px + zoom / 4, py + zoom / 4, zoom / 4, 0, Math.PI * 2);
-              ctx.fill();
-            }
-          }
-        }
-      }
-    }
-
-    // Draw objects layer
-    if (layer === 'objects' || layer === 'base') {
-      const objects = subLayers.objects;
-      if (objects && objects.length > 0) {
-        for (let y = 0; y < objects.length; y++) {
-          for (let x = 0; x < objects[y].length; x++) {
-            const objId = objects[y][x];
-            if (objId > 0) {
-              const px = (x / 2) * zoom + (x % 2) * zoom / 2;
-              const py = (y / 2) * zoom + (y % 2) * zoom / 2;
-              ctx.fillStyle = 'rgba(255, 215, 0, 0.7)';
-              ctx.fillRect(px, py, zoom / 2, zoom / 2);
-            }
-          }
-        }
-      }
-    }
-
-    // Highlight selected tile
-    if (selectedTile) {
-      ctx.strokeStyle = '#00ff00';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(selectedTile.x * zoom, selectedTile.y * zoom, zoom, zoom);
-    }
-
-    // Highlight hovered tile
-    if (hoveredTile && hoveredTile !== selectedTile) {
-      ctx.strokeStyle = '#ffff00';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(hoveredTile.x * zoom, hoveredTile.y * zoom, zoom, zoom);
-    }
-
-  }, [dunData, zoom, showGrid, selectedTile, hoveredTile, layer]);
 
   // Apply modification at position
   const applyModification = useCallback((x, y, saveHistory = true) => {
@@ -701,36 +605,6 @@ export function DUNEditor({ data, filename, onModify, onSave }) {
       onModify(newDunData);
     }
   }, [dunData, tool, paintTileId, paintMonsterId, paintObjectId, layer, pushHistory, onModify]);
-
-  const handleCanvasClick = useCallback((e) => {
-    if (!dunData || !canvasRef.current) return;
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / zoom);
-    const y = Math.floor((e.clientY - rect.top) / zoom);
-
-    if (x >= 0 && x < dunData.width && y >= 0 && y < dunData.height) {
-      if (tool === 'select') {
-        setSelectedTile({ x, y, tileId: dunData.baseLayer[y][x] });
-      } else {
-        applyModification(x, y);
-      }
-    }
-  }, [dunData, zoom, tool, paintTileId, onModify]);
-
-  const handleCanvasMove = useCallback((e) => {
-    if (!dunData || !canvasRef.current) return;
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / zoom);
-    const y = Math.floor((e.clientY - rect.top) / zoom);
-
-    if (x >= 0 && x < dunData.width && y >= 0 && y < dunData.height) {
-      setHoveredTile({ x, y, tileId: dunData.baseLayer[y][x] });
-    } else {
-      setHoveredTile(null);
-    }
-  }, [dunData, zoom]);
 
   if (!dunData) {
     return <div className="dun-editor-loading">Parsing level data...</div>;
@@ -1015,13 +889,82 @@ export function DUNEditor({ data, filename, onModify, onSave }) {
       )}
 
       <div className="dun-editor-canvas-container">
-        <canvas
-          ref={canvasRef}
-          onClick={handleCanvasClick}
-          onMouseMove={handleCanvasMove}
-          onMouseLeave={() => setHoveredTile(null)}
-          className="dun-editor-canvas"
-        />
+        <div
+          className="dun-editor-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${dunData.width}, ${zoom}px)`,
+            gridTemplateRows: `repeat(${dunData.height}, ${zoom}px)`,
+            gap: showGrid ? '1px' : '0',
+            backgroundColor: showGrid ? 'rgba(255,255,255,0.1)' : 'transparent',
+          }}
+        >
+          {dunData.baseLayer.map((row, y) =>
+            row.map((tileId, x) => {
+              const isSelected = selectedTile && selectedTile.x === x && selectedTile.y === y;
+              const isHovered = hoveredTile && hoveredTile.x === x && hoveredTile.y === y;
+
+              // Check for monsters/objects at this position
+              const subX = x * 2;
+              const subY = y * 2;
+              const hasMonster = dunData.subLayers.monsters?.[subY]?.[subX] > 0;
+              const hasObject = dunData.subLayers.objects?.[subY]?.[subX] > 0;
+
+              return (
+                <div
+                  key={`${x}-${y}`}
+                  className="dun-tile"
+                  style={{
+                    width: zoom,
+                    height: zoom,
+                    backgroundColor: getTileColor(tileId),
+                    border: isSelected ? '2px solid #00ff00' : isHovered ? '1px solid #ffff00' : 'none',
+                    boxSizing: 'border-box',
+                    position: 'relative',
+                    cursor: tool === 'select' ? 'pointer' : 'crosshair',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: zoom >= 16 ? Math.max(8, zoom / 3) : 0,
+                    color: 'rgba(255,255,255,0.7)',
+                  }}
+                  onClick={() => {
+                    if (tool === 'select') {
+                      setSelectedTile({ x, y, tileId });
+                    } else {
+                      applyModification(x, y);
+                    }
+                  }}
+                  onMouseEnter={() => setHoveredTile({ x, y, tileId })}
+                  onMouseLeave={() => setHoveredTile(null)}
+                >
+                  {zoom >= 16 && tileId > 0 && tileId}
+                  {hasMonster && (
+                    <div style={{
+                      position: 'absolute',
+                      width: zoom / 2,
+                      height: zoom / 2,
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(255, 0, 0, 0.7)',
+                      top: '25%',
+                      left: '25%',
+                    }} />
+                  )}
+                  {hasObject && (
+                    <div style={{
+                      position: 'absolute',
+                      width: zoom / 2,
+                      height: zoom / 2,
+                      backgroundColor: 'rgba(255, 215, 0, 0.7)',
+                      top: '25%',
+                      left: '25%',
+                    }} />
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );

@@ -39,18 +39,21 @@ const DEFAULT_PALETTE = [
 
 /**
  * Parse a Diablo PAL file (256 RGB triplets)
- * @param {Uint8Array} buffer - PAL file data (768 bytes)
+ * @param {Uint8Array} buffer - PAL file data (768 bytes, or 776 with 8-byte header)
  * @returns {Array<[number, number, number]>} Palette array
  */
 export function parsePalette(buffer) {
   const palette = [];
   const data = new Uint8Array(buffer);
 
+  // Some PAL files have an 8-byte header, handle both cases
+  const offset = data.length === 776 ? 8 : 0;
+
   for (let i = 0; i < 256; i++) {
     palette.push([
-      data[i * 3],
-      data[i * 3 + 1],
-      data[i * 3 + 2],
+      data[offset + i * 3],
+      data[offset + i * 3 + 1],
+      data[offset + i * 3 + 2],
     ]);
   }
 

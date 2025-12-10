@@ -21,6 +21,7 @@ import { LevelPreview, MiniMap } from './LevelPreview';
 import { CampaignBlueprintPanel } from './CampaignBlueprintPanel';
 import { HexViewer, PaletteViewer, DUNEditor, SOLViewer, MINViewer, TILViewer, FileInfo, CELViewer, CL2Viewer, PCXViewer, getFileType, getFileCategory } from './FileViewer';
 import { CampaignBlueprint } from './CampaignBlueprint';
+import { parsePalette } from './CELEncoder';
 
 // Spawn.mpq valid sizes
 const SpawnSizes = [50274091, 25830791];
@@ -95,6 +96,9 @@ export class ModEditor extends Component {
       campaignName: null,
       campaignDunFiles: null,  // Map of path -> DUN data
       loadedCampaignBlueprint: null, // Campaign blueprint loaded from .dcpk
+
+      // Palette for sprite rendering
+      currentPalette: null,
     };
 
     this.executor = new ModToolExecutor();
@@ -449,10 +453,32 @@ export class ModEditor extends Component {
     // Get file list
     const fileList = mpqReader.listFiles();
 
+    // Try to load a default palette for sprite rendering
+    let currentPalette = null;
+    const paletteFiles = [
+      'levels\\l1data\\l1_1.pal',
+      'levels\\towndata\\town.pal',
+      'gendata\\cutl1d.pal',
+    ];
+
+    for (const palPath of paletteFiles) {
+      try {
+        const palData = mpqReader.read(palPath);
+        if (palData && palData.length >= 768) {
+          currentPalette = parsePalette(palData);
+          console.log(`[ModEditor] Loaded palette from ${palPath}`);
+          break;
+        }
+      } catch (e) {
+        // Try next palette
+      }
+    }
+
     this.setState({
       mpqLoaded: true,
       mpqFileName: fileName,
       fileList,
+      currentPalette,
       status: 'ready',
       loadingMessage: null,
       progress: 0,
@@ -1379,6 +1405,7 @@ export class ModEditor extends Component {
                   <CELViewer
                     data={selectedFileData}
                     filename={selectedFile}
+                    palette={this.state.currentPalette}
                   />
                 )}
 
@@ -1387,6 +1414,7 @@ export class ModEditor extends Component {
                   <CL2Viewer
                     data={selectedFileData}
                     filename={selectedFile}
+                    palette={this.state.currentPalette}
                   />
                 )}
 
