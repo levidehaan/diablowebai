@@ -10,6 +10,56 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
+/**
+ * Convert ImageData to a data URL for use in img tags
+ * Uses an offscreen canvas to avoid display issues
+ */
+function imageDataToDataURL(imageData) {
+  if (!imageData || !imageData.data || !imageData.width || !imageData.height) {
+    return null;
+  }
+
+  // Create offscreen canvas
+  const canvas = document.createElement('canvas');
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    console.error('Failed to get 2d context for offscreen canvas');
+    return null;
+  }
+
+  // Put the image data
+  ctx.putImageData(imageData, 0, 0);
+
+  // Return as PNG data URL
+  return canvas.toDataURL('image/png');
+}
+
+/**
+ * Render a checkerboard transparency pattern as a data URL
+ */
+function createCheckerboardDataURL(width, height, checkSize = 8) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.fillStyle = '#252540';
+  for (let y = 0; y < height; y += checkSize * 2) {
+    for (let x = 0; x < width; x += checkSize * 2) {
+      ctx.fillRect(x, y, checkSize, checkSize);
+      ctx.fillRect(x + checkSize, y + checkSize, checkSize, checkSize);
+    }
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
 // Monster data for placement palette
 const COMMON_MONSTERS = [
   { id: 1, name: 'Zombie', color: '#4a4' },
@@ -1715,16 +1765,16 @@ export function FileInfo({ data, filename }) {
 
 /**
  * CELViewer - Display CEL sprite files with animation
+ * Uses img tags instead of canvas for reliable cross-browser rendering
  */
 export function CELViewer({ data, filename, palette: externalPalette }) {
-  const canvasRef = useRef(null);
   const [celData, setCelData] = useState(null);
+  const [frameDataURLs, setFrameDataURLs] = useState([]);
   const [currentFrame, setCurrentFrame] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [zoom, setZoom] = useState(2);
   const [fps, setFps] = useState(10);
   const [error, setError] = useState(null);
-  const [showGrid, setShowGrid] = useState(false);
   const [decoderLoaded, setDecoderLoaded] = useState(false);
   const [customWidth, setCustomWidth] = useState(0); // 0 = auto-detect
   const [widthInput, setWidthInput] = useState('');
@@ -1769,6 +1819,28 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
     }
   }, [data, externalPalette, decoderLoaded, filename, customWidth]);
 
+  // Pre-render all frames as data URLs when celData or zoom changes
+  useEffect(() => {
+    if (!celData || !decoderRef.current) return;
+
+    const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
+    const urls = [];
+
+    for (const frame of celData.frames) {
+      try {
+        const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
+        const dataURL = imageDataToDataURL(imageData);
+        urls.push(dataURL || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+      } catch (err) {
+        console.error('Frame render error:', err);
+        urls.push('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+      }
+    }
+
+    setFrameDataURLs(urls);
+    console.log('[CEL Viewer] Pre-rendered', urls.length, 'frames as data URLs');
+  }, [celData, zoom, externalPalette]);
+
   // Animation loop
   useEffect(() => {
     if (!isPlaying || !celData || celData.frames.length <= 1) return;
@@ -1780,99 +1852,6 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
     animationRef.current = interval;
     return () => clearInterval(interval);
   }, [isPlaying, celData, fps]);
-
-  // Render current frame
-  useEffect(() => {
-    if (!celData || !canvasRef.current || !decoderRef.current) return;
-
-    const frame = celData.frames[currentFrame];
-    if (!frame) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-
-    const width = frame.width * zoom;
-    const height = frame.height * zoom;
-
-    // Set canvas buffer size
-    canvas.width = width;
-    canvas.height = height;
-
-    // Clear with transparency pattern
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, width, height);
-
-    // Draw checkerboard for transparency
-    const checkSize = 8;
-    ctx.fillStyle = '#252540';
-    for (let y = 0; y < height; y += checkSize * 2) {
-      for (let x = 0; x < width; x += checkSize * 2) {
-        ctx.fillRect(x, y, checkSize, checkSize);
-        ctx.fillRect(x + checkSize, y + checkSize, checkSize, checkSize);
-      }
-    }
-
-    // Render sprite using ImageData
-    try {
-      const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
-      const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
-
-      // Find first non-transparent pixel for debugging
-      let firstOpaqueIdx = -1;
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        if (imageData.data[i + 3] > 0) {
-          firstOpaqueIdx = i;
-          break;
-        }
-      }
-      console.log('[CEL Viewer] ImageData created:', {
-        width: imageData.width,
-        height: imageData.height,
-        dataLength: imageData.data.length,
-        sampleRGBA: Array.from(imageData.data.slice(0, 16)),
-        firstOpaquePixelAt: firstOpaqueIdx,
-        firstOpaqueRGBA: firstOpaqueIdx >= 0 ? Array.from(imageData.data.slice(firstOpaqueIdx, firstOpaqueIdx + 4)) : 'none',
-      });
-
-      // Put image data directly onto the canvas
-      ctx.putImageData(imageData, 0, 0);
-
-      // Debug: draw colored markers to prove render code ran
-      ctx.fillStyle = '#ff0000';
-      ctx.fillRect(0, 0, 10, 10);  // Red top-left
-      ctx.fillStyle = '#00ff00';
-      ctx.fillRect(width - 10, 0, 10, 10);  // Green top-right
-      ctx.fillStyle = '#0000ff';
-      ctx.fillRect(0, height - 10, 10, 10);  // Blue bottom-left
-      ctx.fillStyle = '#ffff00';
-      ctx.fillRect(width - 10, height - 10, 10, 10);  // Yellow bottom-right
-
-      console.log('[CEL Render] Drew to canvas', { width, height, canvasWidth: canvas.width, canvasHeight: canvas.height });
-    } catch (err) {
-      console.error('CEL render error:', err);
-      ctx.fillStyle = '#f00';
-      ctx.font = '12px monospace';
-      ctx.fillText('Render error: ' + err.message, 10, 20);
-    }
-
-    // Draw grid if enabled
-    if (showGrid && zoom >= 2) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.lineWidth = 1;
-      for (let x = 0; x <= frame.width; x++) {
-        ctx.beginPath();
-        ctx.moveTo(x * zoom, 0);
-        ctx.lineTo(x * zoom, height);
-        ctx.stroke();
-      }
-      for (let y = 0; y <= frame.height; y++) {
-        ctx.beginPath();
-        ctx.moveTo(0, y * zoom);
-        ctx.lineTo(width, y * zoom);
-        ctx.stroke();
-      }
-    }
-  }, [celData, currentFrame, zoom, showGrid, externalPalette]);
 
   const handleWidthChange = (newWidth) => {
     const w = parseInt(newWidth, 10);
@@ -1914,6 +1893,7 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
   }
 
   const currentFrameData = celData.frames[currentFrame];
+  const currentDataURL = frameDataURLs[currentFrame];
 
   return (
     <div className="cel-viewer">
@@ -1979,17 +1959,6 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
             <option value={8}>8x</option>
           </select>
         </div>
-
-        <div className="control-group">
-          <label>
-            <input
-              type="checkbox"
-              checked={showGrid}
-              onChange={(e) => setShowGrid(e.target.checked)}
-            />
-            Grid
-          </label>
-        </div>
       </div>
 
       {/* Dimension controls */}
@@ -2022,15 +1991,24 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
         </div>
       </div>
 
-      <div className="cel-viewer-canvas-container">
-        <canvas
-          ref={canvasRef}
-          className="cel-viewer-canvas"
-          style={{
-            width: currentFrameData ? currentFrameData.width * zoom : 100,
-            height: currentFrameData ? currentFrameData.height * zoom : 100,
-          }}
-        />
+      <div className="cel-viewer-canvas-container" style={{
+        backgroundImage: `url(${createCheckerboardDataURL(200, 200)})`,
+        backgroundRepeat: 'repeat',
+      }}>
+        {currentDataURL ? (
+          <img
+            src={currentDataURL}
+            alt={`Frame ${currentFrame + 1}`}
+            className="cel-viewer-image"
+            style={{
+              imageRendering: 'pixelated',
+              width: currentFrameData ? currentFrameData.width * zoom : 'auto',
+              height: currentFrameData ? currentFrameData.height * zoom : 'auto',
+            }}
+          />
+        ) : (
+          <div style={{ padding: 20, color: '#888' }}>Rendering...</div>
+        )}
       </div>
 
       {celData.frames.length > 1 && (
@@ -2067,34 +2045,6 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
           <span>Non-zero: {Array.from(currentFrameData.indices).filter(v => v !== 0).length.toLocaleString()}</span>
           <span>Unique colors: {new Set(currentFrameData.indices).size}</span>
           <span>Max index: {Math.max(...currentFrameData.indices)}</span>
-          <button
-            onClick={() => {
-              // Draw test pattern directly to canvas
-              const canvas = canvasRef.current;
-              if (canvas) {
-                const ctx = canvas.getContext('2d');
-                const w = canvas.width;
-                const h = canvas.height;
-                // Draw a visible test pattern
-                ctx.fillStyle = '#ff0000';
-                ctx.fillRect(0, 0, w/2, h/2);
-                ctx.fillStyle = '#00ff00';
-                ctx.fillRect(w/2, 0, w/2, h/2);
-                ctx.fillStyle = '#0000ff';
-                ctx.fillRect(0, h/2, w/2, h/2);
-                ctx.fillStyle = '#ffff00';
-                ctx.fillRect(w/2, h/2, w/2, h/2);
-                ctx.fillStyle = '#ffffff';
-                ctx.font = '14px sans-serif';
-                ctx.fillText('TEST', w/2 - 20, h/2);
-                console.log('[CEL Test] Drew test pattern to canvas', {w, h});
-              }
-            }}
-            style={{marginLeft: '8px', padding: '2px 6px', fontSize: '11px'}}
-            title="Draw a test pattern to verify canvas visibility"
-          >
-            Test Canvas
-          </button>
         </div>
       )}
     </div>
@@ -2103,10 +2053,12 @@ export function CELViewer({ data, filename, palette: externalPalette }) {
 
 /**
  * CL2Viewer - Display CL2 animation files with 8 directions
+ * Uses img tags instead of canvas for reliable cross-browser rendering
  */
 export function CL2Viewer({ data, filename, palette: externalPalette }) {
-  const canvasRef = useRef(null);
   const [cl2Data, setCl2Data] = useState(null);
+  const [frameDataURLs, setFrameDataURLs] = useState({}); // { direction: [urls] }
+  const [allDirectionsDataURL, setAllDirectionsDataURL] = useState(null);
   const [currentDirection, setCurrentDirection] = useState(0);
   const [currentFrame, setCurrentFrame] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -2141,10 +2093,8 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
       });
 
       if (decoded.type === 'cel') {
-        // Fallback to CEL format
         setCl2Data({ ...decoded.data, isCEL: true });
       } else if (decoded.type === 'cl2-mono') {
-        // Mono-group CL2 (single direction)
         setCl2Data({ ...decoded, isMono: true });
       } else {
         setCl2Data(decoded);
@@ -2158,6 +2108,102 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
       setCl2Data(null);
     }
   }, [data, externalPalette, decoderLoaded, filename]);
+
+  // Pre-render all frames as data URLs
+  useEffect(() => {
+    if (!cl2Data || !decoderRef.current) return;
+
+    const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
+    const urlsByDirection = {};
+
+    if (cl2Data.isCEL || cl2Data.isMono) {
+      // Single direction
+      const frames = cl2Data.frames || [];
+      urlsByDirection[0] = frames.map(frame => {
+        try {
+          const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
+          return imageDataToDataURL(imageData) || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        } catch (err) {
+          return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        }
+      });
+    } else if (cl2Data.directions) {
+      // 8 directions
+      cl2Data.directions.forEach((dir, dirIdx) => {
+        if (!dir || !dir.frames) return;
+        urlsByDirection[dirIdx] = dir.frames.map(frame => {
+          try {
+            const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
+            return imageDataToDataURL(imageData) || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+          } catch (err) {
+            return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+          }
+        });
+      });
+    }
+
+    setFrameDataURLs(urlsByDirection);
+    console.log('[CL2 Viewer] Pre-rendered frames as data URLs');
+  }, [cl2Data, zoom, externalPalette]);
+
+  // Pre-render "all directions" grid view
+  useEffect(() => {
+    if (!cl2Data || !decoderRef.current || cl2Data.isCEL || cl2Data.isMono || !cl2Data.directions) {
+      setAllDirectionsDataURL(null);
+      return;
+    }
+
+    const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
+    const directions = cl2Data.directions.filter(d => d && d.frames && d.frames.length > 0);
+    if (directions.length === 0) return;
+
+    const sampleFrame = directions[0].frames[0];
+    const frameW = sampleFrame.width * zoom;
+    const frameH = sampleFrame.height * zoom;
+
+    // 3x3 grid layout
+    const canvas = document.createElement('canvas');
+    canvas.width = frameW * 3 + 8;
+    canvas.height = frameH * 3 + 8;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const positions = [
+      { dir: 4, x: 1, y: 0 },  // N
+      { dir: 5, x: 2, y: 0 },  // NE
+      { dir: 6, x: 2, y: 1 },  // E
+      { dir: 7, x: 2, y: 2 },  // SE
+      { dir: 0, x: 1, y: 2 },  // S
+      { dir: 1, x: 0, y: 2 },  // SW
+      { dir: 2, x: 0, y: 1 },  // W
+      { dir: 3, x: 0, y: 0 },  // NW
+    ];
+
+    positions.forEach(({ dir, x, y }) => {
+      const direction = cl2Data.directions[dir];
+      if (!direction || direction.frames.length === 0) return;
+
+      const frameIdx = Math.min(currentFrame, direction.frames.length - 1);
+      const frame = direction.frames[frameIdx];
+      if (!frame) return;
+
+      const px = x * (frameW + 4);
+      const py = y * (frameH + 4);
+
+      if (dir === currentDirection) {
+        ctx.strokeStyle = '#4a9';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px - 1, py - 1, frameW + 2, frameH + 2);
+      }
+
+      const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
+      ctx.putImageData(imageData, px, py);
+    });
+
+    setAllDirectionsDataURL(canvas.toDataURL('image/png'));
+  }, [cl2Data, currentDirection, currentFrame, zoom, externalPalette]);
 
   // Get current frames
   const getCurrentFrames = useCallback(() => {
@@ -2183,94 +2229,6 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
     return () => clearInterval(interval);
   }, [isPlaying, cl2Data, fps, getCurrentFrames]);
 
-  // Render current frame(s)
-  useEffect(() => {
-    if (!cl2Data || !canvasRef.current || !decoderRef.current) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const palette = externalPalette || decoderRef.current.DIABLO_FULL_PALETTE;
-
-    if (showAllDirections && !cl2Data.isCEL && !cl2Data.isMono && cl2Data.directions) {
-      // Show all 8 directions in a grid
-      const directions = cl2Data.directions.filter(d => d && d.frames && d.frames.length > 0);
-      if (directions.length === 0) return;
-
-      const sampleFrame = directions[0].frames[0];
-      const frameW = sampleFrame.width * zoom;
-      const frameH = sampleFrame.height * zoom;
-
-      // 3x3 grid layout for 8 directions + center
-      canvas.width = frameW * 3 + 8;
-      canvas.height = frameH * 3 + 8;
-
-      ctx.fillStyle = '#1a1a2e';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Direction positions in 3x3 grid: N, NE, E, SE, S, SW, W, NW
-      const positions = [
-        { dir: 4, x: 1, y: 0 },  // N
-        { dir: 5, x: 2, y: 0 },  // NE
-        { dir: 6, x: 2, y: 1 },  // E
-        { dir: 7, x: 2, y: 2 },  // SE
-        { dir: 0, x: 1, y: 2 },  // S
-        { dir: 1, x: 0, y: 2 },  // SW
-        { dir: 2, x: 0, y: 1 },  // W
-        { dir: 3, x: 0, y: 0 },  // NW
-      ];
-
-      positions.forEach(({ dir, x, y }) => {
-        const direction = cl2Data.directions[dir];
-        if (!direction || direction.frames.length === 0) return;
-
-        const frameIdx = Math.min(currentFrame, direction.frames.length - 1);
-        const frame = direction.frames[frameIdx];
-        if (!frame) return;
-
-        const px = x * (frameW + 4);
-        const py = y * (frameH + 4);
-
-        // Draw border for current direction
-        if (dir === currentDirection) {
-          ctx.strokeStyle = '#4a9';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(px - 1, py - 1, frameW + 2, frameH + 2);
-        }
-
-        const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
-        ctx.putImageData(imageData, px, py);
-      });
-
-    } else {
-      // Show single direction
-      const frames = getCurrentFrames();
-      const frame = frames[currentFrame];
-      if (!frame) return;
-
-      const width = frame.width * zoom;
-      const height = frame.height * zoom;
-
-      canvas.width = width;
-      canvas.height = height;
-
-      // Transparency pattern
-      ctx.fillStyle = '#1a1a2e';
-      ctx.fillRect(0, 0, width, height);
-
-      const checkSize = 8;
-      ctx.fillStyle = '#252540';
-      for (let y = 0; y < height; y += checkSize * 2) {
-        for (let x = 0; x < width; x += checkSize * 2) {
-          ctx.fillRect(x, y, checkSize, checkSize);
-          ctx.fillRect(x + checkSize, y + checkSize, checkSize, checkSize);
-        }
-      }
-
-      const imageData = decoderRef.current.renderFrameToImageData(frame, palette, zoom);
-      ctx.putImageData(imageData, 0, 0);
-    }
-  }, [cl2Data, currentDirection, currentFrame, zoom, showAllDirections, externalPalette, getCurrentFrames]);
-
   if (error) {
     return (
       <div className="cl2-viewer cl2-viewer-error">
@@ -2292,6 +2250,8 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
 
   const currentFrames = getCurrentFrames();
   const currentFrameData = currentFrames[currentFrame];
+  const directionKey = cl2Data.isCEL || cl2Data.isMono ? 0 : currentDirection;
+  const currentDataURL = frameDataURLs[directionKey]?.[currentFrame];
 
   return (
     <div className="cl2-viewer">
@@ -2300,6 +2260,8 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
         <span className="cl2-info">
           {cl2Data.isCEL ? (
             <>CEL: {cl2Data.frameCount} frames</>
+          ) : cl2Data.isMono ? (
+            <>CL2 Mono: {currentFrames.length} frames</>
           ) : (
             <>CL2: 8 directions, {currentFrames.length} frames</>
           )}
@@ -2307,7 +2269,7 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
         </span>
       </div>
 
-      {!cl2Data.isCEL && (
+      {!cl2Data.isCEL && !cl2Data.isMono && (
         <div className="cl2-direction-selector">
           <span className="direction-label">Direction:</span>
           <div className="direction-grid">
@@ -2390,8 +2352,31 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
         </div>
       </div>
 
-      <div className="cl2-viewer-canvas-container">
-        <canvas ref={canvasRef} className="cl2-viewer-canvas" />
+      <div className="cl2-viewer-canvas-container" style={{
+        backgroundImage: `url(${createCheckerboardDataURL(200, 200)})`,
+        backgroundRepeat: 'repeat',
+      }}>
+        {showAllDirections && allDirectionsDataURL ? (
+          <img
+            src={allDirectionsDataURL}
+            alt="All directions"
+            className="cl2-viewer-image"
+            style={{ imageRendering: 'pixelated' }}
+          />
+        ) : currentDataURL ? (
+          <img
+            src={currentDataURL}
+            alt={`Frame ${currentFrame + 1}`}
+            className="cl2-viewer-image"
+            style={{
+              imageRendering: 'pixelated',
+              width: currentFrameData ? currentFrameData.width * zoom : 'auto',
+              height: currentFrameData ? currentFrameData.height * zoom : 'auto',
+            }}
+          />
+        ) : (
+          <div style={{ padding: 20, color: '#888' }}>Rendering...</div>
+        )}
       </div>
 
       {currentFrames.length > 1 && (
@@ -2417,10 +2402,11 @@ export function CL2Viewer({ data, filename, palette: externalPalette }) {
 
 /**
  * PCXViewer - Display PCX image files (legacy format used in Diablo UI)
+ * Uses img tags instead of canvas for reliable cross-browser rendering
  */
 export function PCXViewer({ data, filename }) {
-  const canvasRef = useRef(null);
   const [pcxData, setPcxData] = useState(null);
+  const [dataURL, setDataURL] = useState(null);
   const [zoom, setZoom] = useState(2);
   const [error, setError] = useState(null);
   const [showInfo, setShowInfo] = useState(true);
@@ -2451,50 +2437,22 @@ export function PCXViewer({ data, filename }) {
     }
   }, [data, decoderLoaded]);
 
-  // Render image
+  // Pre-render as data URL
   useEffect(() => {
-    if (!pcxData || !canvasRef.current) return;
+    if (!pcxData) return;
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-
-    const width = pcxData.width * zoom;
-    const height = pcxData.height * zoom;
-
-    canvas.width = width;
-    canvas.height = height;
-
-    // Draw checkerboard background for transparency
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, width, height);
-
-    const checkSize = 8;
-    ctx.fillStyle = '#252540';
-    for (let y = 0; y < height; y += checkSize * 2) {
-      for (let x = 0; x < width; x += checkSize * 2) {
-        ctx.fillRect(x, y, checkSize, checkSize);
-        ctx.fillRect(x + checkSize, y + checkSize, checkSize, checkSize);
-      }
-    }
-
-    // Create ImageData and scale
+    // Create ImageData
     const imageData = new ImageData(
       new Uint8ClampedArray(pcxData.rgba),
       pcxData.width,
       pcxData.height
     );
 
-    // Use temporary canvas for scaling
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = pcxData.width;
-    tempCanvas.height = pcxData.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.putImageData(imageData, 0, 0);
-
-    // Draw scaled
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(tempCanvas, 0, 0, width, height);
-  }, [pcxData, zoom]);
+    // Convert to data URL
+    const url = imageDataToDataURL(imageData);
+    setDataURL(url);
+    console.log('[PCX Viewer] Rendered to data URL');
+  }, [pcxData]);
 
   if (error) {
     return (
@@ -2557,8 +2515,24 @@ export function PCXViewer({ data, filename }) {
         </div>
       </div>
 
-      <div className="pcx-viewer-canvas-container">
-        <canvas ref={canvasRef} className="pcx-viewer-canvas" />
+      <div className="pcx-viewer-canvas-container" style={{
+        backgroundImage: `url(${createCheckerboardDataURL(200, 200)})`,
+        backgroundRepeat: 'repeat',
+      }}>
+        {dataURL ? (
+          <img
+            src={dataURL}
+            alt={filename}
+            className="pcx-viewer-image"
+            style={{
+              imageRendering: 'pixelated',
+              width: pcxData.width * zoom,
+              height: pcxData.height * zoom,
+            }}
+          />
+        ) : (
+          <div style={{ padding: 20, color: '#888' }}>Rendering...</div>
+        )}
       </div>
 
       {showInfo && (
