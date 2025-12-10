@@ -885,6 +885,53 @@ function decodeCELRLE(rleData) {
 }
 
 /**
+ * Decode CL2 RLE data for a single row
+ * Returns exactly 'width' pixels (or all pixels if width is 0)
+ *
+ * @param {Uint8Array} rleData - RLE encoded data
+ * @param {number} startOffset - Start offset in rleData
+ * @param {number} width - Expected row width (0 for unlimited)
+ * @returns {{pixels: number[], bytesRead: number}} Decoded pixels and bytes consumed
+ */
+function decodeCL2Row(rleData, startOffset, width) {
+  const pixels = [];
+  let i = startOffset;
+
+  while (i < rleData.length && (width === 0 || pixels.length < width)) {
+    const cmd = rleData[i++];
+
+    if (cmd === 0) {
+      continue; // Skip invalid
+    }
+
+    if (cmd >= 0x01 && cmd <= 0x7F) {
+      // Transparent run: cmd transparent pixels
+      const count = width > 0 ? Math.min(cmd, width - pixels.length) : cmd;
+      for (let j = 0; j < count; j++) {
+        pixels.push(0);
+      }
+    } else if (cmd >= 0x80 && cmd <= 0xBE) {
+      // Fill run: (191 - cmd) pixels of one color
+      const totalCount = 191 - cmd;
+      const count = width > 0 ? Math.min(totalCount, width - pixels.length) : totalCount;
+      const color = i < rleData.length ? rleData[i++] : 0;
+      for (let j = 0; j < count; j++) {
+        pixels.push(color);
+      }
+    } else {
+      // 0xBF-0xFF: (256 - cmd) literal pixels follow
+      const totalCount = 256 - cmd;
+      const count = width > 0 ? Math.min(totalCount, width - pixels.length) : totalCount;
+      for (let j = 0; j < count && i < rleData.length; j++) {
+        pixels.push(rleData[i++]);
+      }
+    }
+  }
+
+  return { pixels, bytesRead: i - startOffset };
+}
+
+/**
  * Decode CL2 RLE data (CL2 has DIFFERENT encoding than CEL!)
  *
  * CL2 RLE encoding:
@@ -932,6 +979,148 @@ function decodeCL2RLE(rleData) {
 }
 
 /**
+ * Decode CL2 frame with proper row-by-row handling
+ * CL2 frames have a 10-byte header with chunk offsets, and each row
+ * is encoded separately within each chunk.
+ *
+ * @param {Uint8Array} frameData - CL2 frame data
+ * @param {number} expectedWidth - Expected width (0 for auto-detect)
+ * @param {string} filename - Optional filename for dimension hints
+ * @returns {{indices: Uint8Array, width: number, height: number, rows: number[][]}}
+ */
+function decodeCL2Frame(frameData, expectedWidth = 0, filename = '') {
+  const view = new DataView(frameData.buffer, frameData.byteOffset, frameData.byteLength);
+
+  // CL2 frames have a 10-byte header with 5 chunk offsets
+  // Each chunk handles up to 32 rows
+  if (frameData.length < 10) {
+    return { indices: new Uint8Array(0), width: 0, height: 0, rows: [], hasFrameHeader: false };
+  }
+
+  const firstWord = view.getUint16(0, true);
+
+  // Check for frame header (first word should be 0x000A = 10)
+  if (firstWord !== 0x000A) {
+    // No header, fall back to stream decoding
+    const allPixels = decodeCL2RLE(frameData);
+    const dims = detectSpriteDimensions(allPixels.length, filename);
+    const width = expectedWidth > 0 ? expectedWidth : dims.width;
+    const height = Math.ceil(allPixels.length / width);
+    const indices = new Uint8Array(width * height);
+
+    // Copy and flip vertically
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const srcIdx = y * width + x;
+        const dstY = height - 1 - y;
+        indices[dstY * width + x] = srcIdx < allPixels.length ? allPixels[srcIdx] : 0;
+      }
+    }
+
+    const rows = [];
+    for (let y = 0; y < height; y++) {
+      rows.push(Array.from(indices.slice(y * width, (y + 1) * width)));
+    }
+    return { indices, width, height, rows, hasFrameHeader: false };
+  }
+
+  // Read 5 chunk offsets
+  const chunkOffsets = [];
+  for (let i = 0; i < 5; i++) {
+    chunkOffsets.push(view.getUint16(i * 2, true));
+  }
+
+  // Count actual chunks (non-zero offsets after the first)
+  let numChunks = 1;
+  for (let i = 1; i < 5; i++) {
+    if (chunkOffsets[i] > chunkOffsets[i - 1]) {
+      numChunks++;
+    } else {
+      break;
+    }
+  }
+
+  // Estimate dimensions - each chunk is 32 rows
+  const estimatedHeight = numChunks * 32;
+
+  // Determine width from filename hints or use common CL2 widths
+  let width = expectedWidth;
+  if (width <= 0) {
+    // Monster sprites are commonly 96x128 or 128x128
+    if (filename.toLowerCase().includes('monster')) {
+      width = 96;
+    } else {
+      // Try to detect from first chunk's data
+      // Decode first chunk to estimate width from pixel count
+      const chunk0Start = chunkOffsets[0];
+      const chunk0End = numChunks > 1 ? chunkOffsets[1] : frameData.length;
+      const chunk0Data = frameData.slice(chunk0Start, chunk0End);
+      const chunk0Pixels = decodeCL2RLE(chunk0Data);
+      // 32 rows per chunk
+      if (chunk0Pixels.length > 0 && chunk0Pixels.length % 32 === 0) {
+        width = chunk0Pixels.length / 32;
+      } else {
+        width = 96; // Default fallback
+      }
+    }
+  }
+
+  const height = estimatedHeight;
+  const allRows = [];
+
+  // Decode each chunk
+  for (let c = 0; c < numChunks; c++) {
+    const chunkStart = chunkOffsets[c];
+    const chunkEnd = c < numChunks - 1 ? chunkOffsets[c + 1] : frameData.length;
+    const chunkData = frameData.slice(chunkStart, chunkEnd);
+
+    // Each chunk has 32 rows, decode row by row
+    let offset = 0;
+    for (let row = 0; row < 32 && allRows.length < height; row++) {
+      const { pixels, bytesRead } = decodeCL2Row(chunkData, offset, width);
+
+      // Pad row to exact width if needed
+      while (pixels.length < width) {
+        pixels.push(0);
+      }
+
+      allRows.push(pixels.slice(0, width));
+      offset += bytesRead;
+
+      // If we ran out of data in this chunk, stop
+      if (offset >= chunkData.length) {
+        break;
+      }
+    }
+  }
+
+  // Pad with empty rows if needed
+  while (allRows.length < height) {
+    allRows.push(new Array(width).fill(0));
+  }
+
+  // Create indices array - CL2 is stored bottom-up, flip to top-down
+  const actualHeight = allRows.length;
+  const indices = new Uint8Array(width * actualHeight);
+
+  for (let y = 0; y < actualHeight; y++) {
+    const srcRow = allRows[y];
+    const dstY = actualHeight - 1 - y;
+    for (let x = 0; x < width; x++) {
+      indices[dstY * width + x] = srcRow[x] || 0;
+    }
+  }
+
+  // Build flipped rows array
+  const rows = [];
+  for (let y = 0; y < actualHeight; y++) {
+    rows.push(Array.from(indices.slice(y * width, (y + 1) * width)));
+  }
+
+  return { indices, width, height: actualHeight, rows, hasFrameHeader: true };
+}
+
+/**
  * Decode a single CEL frame from RLE data
  * Diablo CEL files don't contain row markers - all pixels are stored sequentially.
  * Width must be known in advance or inferred from the total pixel count.
@@ -943,6 +1132,12 @@ function decodeCL2RLE(rleData) {
  * @returns {{indices: Uint8Array, width: number, height: number, rows: number[][]}}
  */
 function decodeRLEFrame(frameData, expectedWidth = 0, filename = '', isCL2 = false) {
+  // For CL2, use the specialized decoder that handles row offsets
+  if (isCL2) {
+    return decodeCL2Frame(frameData, expectedWidth, filename);
+  }
+
+  // CEL decoding - no row markers, just sequential pixels
   // Try to detect frame header
   const header = detectFrameHeader(frameData);
   let rleData = frameData;
@@ -953,19 +1148,15 @@ function decodeRLEFrame(frameData, expectedWidth = 0, filename = '', isCL2 = fal
     hasFrameHeader = true;
   }
 
-  // Decode pixels using appropriate RLE decoder
-  const allPixels = isCL2 ? decodeCL2RLE(rleData) : decodeCELRLE(rleData);
+  // Decode pixels using CEL RLE decoder
+  const allPixels = decodeCELRLE(rleData);
   const totalPixels = allPixels.length;
 
   // If we have a frame header with chunk offsets, we can calculate width
-  // Width = total pixels in a chunk / 32 rows per chunk
   let width = expectedWidth;
   let height = 0;
 
   if (width <= 0 && hasFrameHeader && header.chunkOffsets.length >= 2) {
-    // Calculate pixels between chunks to infer width
-    // Each chunk contains 32 rows, so if we know total pixels and chunks:
-    // width = total_pixels / (num_chunks * 32)
     const numChunks = header.chunkOffsets.length;
     const estimatedHeight = numChunks * 32;
     if (totalPixels > 0 && totalPixels % estimatedHeight === 0) {
@@ -985,19 +1176,17 @@ function decodeRLEFrame(frameData, expectedWidth = 0, filename = '', isCL2 = fal
   // Create indices array with proper dimensions
   const indices = new Uint8Array(width * height);
 
-  // CEL/CL2 frames are stored bottom-up (from bottom-left to top-right)
-  // so we need to flip vertically when converting to standard top-down order
+  // CEL frames are stored bottom-up, flip vertically
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const srcIdx = y * width + x;
-      // Flip Y: row 0 in output = row (height-1) from source
       const dstY = height - 1 - y;
       const dstIdx = dstY * width + x;
       indices[dstIdx] = srcIdx < totalPixels ? allPixels[srcIdx] : 0;
     }
   }
 
-  // Build rows array for compatibility (already flipped)
+  // Build rows array for compatibility
   const rows = [];
   for (let y = 0; y < height; y++) {
     const row = [];
