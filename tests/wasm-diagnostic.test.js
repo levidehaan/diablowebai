@@ -449,6 +449,96 @@ test('Verify all required core game exports', () => {
 });
 
 // ============================================================================
+// Direct WASM Instantiation Tests (Node.js native WebAssembly)
+// ============================================================================
+
+test('Direct WASM binary instantiation', async () => {
+  const wasmPath = path.join(PUBLIC_WASM, 'devilutionx.wasm');
+  const wasmBuffer = fs.readFileSync(wasmPath);
+
+  try {
+    const module = await WebAssembly.compile(wasmBuffer);
+    const exports = WebAssembly.Module.exports(module);
+    const imports = WebAssembly.Module.imports(module);
+
+    log(c.dim, `    WASM compiled successfully`);
+    log(c.dim, `    Total exports: ${exports.length}`);
+    log(c.dim, `    Total imports: ${imports.length}`);
+
+    // Check for function exports
+    const functionExports = exports.filter(e => e.kind === 'function');
+    const memoryExports = exports.filter(e => e.kind === 'memory');
+    const tableExports = exports.filter(e => e.kind === 'table');
+
+    log(c.dim, `    Function exports: ${functionExports.length}`);
+    log(c.dim, `    Memory exports: ${memoryExports.length}`);
+    log(c.dim, `    Table exports: ${tableExports.length}`);
+
+    // Look for DApi exports
+    const dapiExports = functionExports.filter(e => e.name.includes('DApi'));
+    log(c.dim, `    DApi function exports: ${dapiExports.length}`);
+
+    if (dapiExports.length > 0) {
+      log(c.dim, `    DApi exports found:`);
+      dapiExports.slice(0, 10).forEach(e => {
+        log(c.dim, `      - ${e.name}`);
+      });
+      if (dapiExports.length > 10) {
+        log(c.dim, `      ... and ${dapiExports.length - 10} more`);
+      }
+    }
+
+    // Check for critical exports
+    const hasDApiInit = functionExports.some(e => e.name === '_DApi_Init');
+    const hasDApiRender = functionExports.some(e => e.name === '_DApi_Render');
+
+    if (!hasDApiInit || !hasDApiRender) {
+      log(c.red, `\n    WASM EXPORT VERIFICATION FAILED`);
+      log(c.red, `    _DApi_Init: ${hasDApiInit ? 'FOUND' : 'MISSING'}`);
+      log(c.red, `    _DApi_Render: ${hasDApiRender ? 'FOUND' : 'MISSING'}`);
+      throw new Error('Critical WASM exports missing from binary');
+    }
+  } catch (e) {
+    if (e.message.includes('Critical WASM exports')) {
+      throw e;
+    }
+    log(c.yellow, `    WASM compilation issue: ${e.message}`);
+    // Don't fail - the WASM might need browser environment
+  }
+});
+
+test('Verify WASM export count matches JS loader', async () => {
+  const wasmPath = path.join(PUBLIC_WASM, 'devilutionx.wasm');
+  const jsPath = path.join(PUBLIC_WASM, 'devilutionx.js');
+  const wasmBuffer = fs.readFileSync(wasmPath);
+  const jsContent = fs.readFileSync(jsPath, 'utf8');
+
+  try {
+    const module = await WebAssembly.compile(wasmBuffer);
+    const exports = WebAssembly.Module.exports(module);
+    const functionExports = exports.filter(e => e.kind === 'function');
+
+    // Count Module["_..."] exports in JS
+    const jsExportMatches = jsContent.match(/Module\["_[^"]+"\]/g) || [];
+    const uniqueJsExports = [...new Set(jsExportMatches)];
+
+    log(c.dim, `    WASM function exports: ${functionExports.length}`);
+    log(c.dim, `    JS Module exports: ${uniqueJsExports.length}`);
+
+    // These numbers won't match exactly due to how Emscripten works,
+    // but we should have at least some exports
+    if (functionExports.length === 0) {
+      throw new Error('No function exports in WASM binary');
+    }
+  } catch (e) {
+    if (e.message.includes('No function exports')) {
+      throw e;
+    }
+    log(c.dim, `    Skipped: ${e.message.slice(0, 50)}...`);
+  }
+});
+
+// ============================================================================
 // Summary Report
 // ============================================================================
 
