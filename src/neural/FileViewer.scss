@@ -536,7 +536,7 @@
   }
 
   &-list {
-    max-height: 400px;
+    flex: 1;
     overflow-y: auto;
 
     .file-item {

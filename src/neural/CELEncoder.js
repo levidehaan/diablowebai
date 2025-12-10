@@ -997,10 +997,35 @@ function decodeCL2Frame(frameData, expectedWidth = 0, filename = '') {
     return { indices: new Uint8Array(0), width: 0, height: 0, rows: [], hasFrameHeader: false };
   }
 
-  const firstWord = view.getUint16(0, true);
+  // Read the potential 5 chunk offsets to detect if this has a frame header
+  // A valid CL2 header has offsets that:
+  // 1. First offset is >= 10 (points past the header itself)
+  // 2. Offsets are in ascending order (or 0 for unused chunks)
+  // 3. All offsets are within the frame bounds
+  const potentialOffsets = [];
+  for (let i = 0; i < 5; i++) {
+    potentialOffsets.push(view.getUint16(i * 2, true));
+  }
 
-  // Check for frame header (first word should be 0x000A = 10)
-  if (firstWord !== 0x000A) {
+  // Check if this looks like a valid CL2 frame header
+  const firstOffset = potentialOffsets[0];
+  let hasValidHeader = firstOffset >= 10 && firstOffset <= frameData.length;
+
+  if (hasValidHeader) {
+    // Verify offsets are in ascending order (ignoring zeros/unused)
+    let lastValidOffset = firstOffset;
+    for (let i = 1; i < 5 && hasValidHeader; i++) {
+      const offset = potentialOffsets[i];
+      if (offset === 0) continue; // Unused chunk
+      if (offset < lastValidOffset || offset > frameData.length) {
+        hasValidHeader = false;
+      } else {
+        lastValidOffset = offset;
+      }
+    }
+  }
+
+  if (!hasValidHeader) {
     // No header, fall back to stream decoding
     const allPixels = decodeCL2RLE(frameData);
     const dims = detectSpriteDimensions(allPixels.length, filename);
@@ -1024,11 +1049,8 @@ function decodeCL2Frame(frameData, expectedWidth = 0, filename = '') {
     return { indices, width, height, rows, hasFrameHeader: false };
   }
 
-  // Read 5 chunk offsets
-  const chunkOffsets = [];
-  for (let i = 0; i < 5; i++) {
-    chunkOffsets.push(view.getUint16(i * 2, true));
-  }
+  // Use the chunk offsets we already read during validation
+  const chunkOffsets = potentialOffsets;
 
   // Count actual chunks (non-zero offsets after the first)
   let numChunks = 1;

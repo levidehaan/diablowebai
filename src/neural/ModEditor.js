@@ -1231,11 +1231,12 @@ export class ModEditor extends Component {
                   />
                 )}
 
-                {/* DUN Preview - Use DUNEditor in read-only mode */}
+                {/* DUN Preview - Use DUNEditor in view-only mode */}
                 {viewMode === 'preview' && selectedFileType?.key === 'DUN' && selectedFileData && (
                   <DUNEditor
                     data={selectedFileData}
                     filename={selectedFile}
+                    viewOnly={true}
                   />
                 )}
 
