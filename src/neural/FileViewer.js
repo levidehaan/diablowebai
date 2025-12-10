@@ -367,8 +367,9 @@ export function TRNViewer({ data, filename }) {
 
 /**
  * DUNEditor - Interactive level editor
+ * @param viewOnly - If true, hides editor controls and shows just the map grid
  */
-export function DUNEditor({ data, filename, onModify, onSave }) {
+export function DUNEditor({ data, filename, onModify, onSave, viewOnly = false }) {
   const [dunData, setDunData] = useState(null);
   const [selectedTile, setSelectedTile] = useState(null);
   const [hoveredTile, setHoveredTile] = useState(null);
@@ -376,10 +377,10 @@ export function DUNEditor({ data, filename, onModify, onSave }) {
   const [paintTileId, setPaintTileId] = useState(13); // Default floor
   const [paintMonsterId, setPaintMonsterId] = useState(33); // Default skeleton
   const [paintObjectId, setPaintObjectId] = useState(1); // Default barrel
-  const [zoom, setZoom] = useState(16); // Larger default zoom
+  const [zoom, setZoom] = useState(viewOnly ? 12 : 16); // Smaller default for view-only
   const [showGrid, setShowGrid] = useState(true);
   const [layer, setLayer] = useState('base'); // base, monsters, objects, items
-  const [showStats, setShowStats] = useState(true);
+  const [showStats, setShowStats] = useState(!viewOnly); // Hide stats by default in view-only
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isDragging, setIsDragging] = useState(false);
@@ -678,116 +679,119 @@ export function DUNEditor({ data, filename, onModify, onSave }) {
   }
 
   return (
-    <div className="dun-editor">
-      <div className="dun-editor-toolbar">
-        {/* Undo/Redo/Save */}
-        <div className="toolbar-group">
-          <button
-            className="tool-btn"
-            onClick={undo}
-            disabled={historyIndex <= 0}
-            title="Undo (Ctrl+Z)"
-          >
-            ↩ Undo
-          </button>
-          <button
-            className="tool-btn"
-            onClick={redo}
-            disabled={historyIndex >= history.length - 1}
-            title="Redo (Ctrl+Y)"
-          >
-            ↪ Redo
-          </button>
-          <button
-            className={`tool-btn ${hasChanges ? 'highlight' : ''}`}
-            onClick={handleSave}
-            disabled={!hasChanges}
-            title="Save changes"
-          >
-            💾 Save
-          </button>
-        </div>
+    <div className={`dun-editor ${viewOnly ? 'view-only' : ''}`}>
+      {/* Editor Toolbar - hidden in view-only mode */}
+      {!viewOnly && (
+        <div className="dun-editor-toolbar">
+          {/* Undo/Redo/Save */}
+          <div className="toolbar-group">
+            <button
+              className="tool-btn"
+              onClick={undo}
+              disabled={historyIndex <= 0}
+              title="Undo (Ctrl+Z)"
+            >
+              ↩ Undo
+            </button>
+            <button
+              className="tool-btn"
+              onClick={redo}
+              disabled={historyIndex >= history.length - 1}
+              title="Redo (Ctrl+Y)"
+            >
+              ↪ Redo
+            </button>
+            <button
+              className={`tool-btn ${hasChanges ? 'highlight' : ''}`}
+              onClick={handleSave}
+              disabled={!hasChanges}
+              title="Save changes"
+            >
+              💾 Save
+            </button>
+          </div>
 
-        <div className="toolbar-divider" />
+          <div className="toolbar-divider" />
 
-        {/* Tools */}
-        <div className="toolbar-group">
-          <span className="toolbar-label">Tool:</span>
-          <button
-            className={`tool-btn ${tool === 'select' ? 'active' : ''}`}
-            onClick={() => setTool('select')}
-            title="Select tile"
-          >
-            ◎ Select
-          </button>
-          <button
-            className={`tool-btn ${tool === 'paint' ? 'active' : ''}`}
-            onClick={() => setTool('paint')}
-            title="Paint tiles"
-          >
-            🖌 Paint
-          </button>
-          <button
-            className={`tool-btn ${tool === 'monster' ? 'active' : ''}`}
-            onClick={() => setTool('monster')}
-            title="Place monsters"
-          >
-            👹 Monster
-          </button>
-          <button
-            className={`tool-btn ${tool === 'object' ? 'active' : ''}`}
-            onClick={() => setTool('object')}
-            title="Place objects"
-          >
-            📦 Object
-          </button>
-          <button
-            className={`tool-btn ${tool === 'eraser' ? 'active' : ''}`}
-            onClick={() => setTool('eraser')}
-            title="Erase"
-          >
-            🧹 Erase
-          </button>
-        </div>
+          {/* Tools */}
+          <div className="toolbar-group">
+            <span className="toolbar-label">Tool:</span>
+            <button
+              className={`tool-btn ${tool === 'select' ? 'active' : ''}`}
+              onClick={() => setTool('select')}
+              title="Select tile"
+            >
+              ◎ Select
+            </button>
+            <button
+              className={`tool-btn ${tool === 'paint' ? 'active' : ''}`}
+              onClick={() => setTool('paint')}
+              title="Paint tiles"
+            >
+              🖌 Paint
+            </button>
+            <button
+              className={`tool-btn ${tool === 'monster' ? 'active' : ''}`}
+              onClick={() => setTool('monster')}
+              title="Place monsters"
+            >
+              👹 Monster
+            </button>
+            <button
+              className={`tool-btn ${tool === 'object' ? 'active' : ''}`}
+              onClick={() => setTool('object')}
+              title="Place objects"
+            >
+              📦 Object
+            </button>
+            <button
+              className={`tool-btn ${tool === 'eraser' ? 'active' : ''}`}
+              onClick={() => setTool('eraser')}
+              title="Erase"
+            >
+              🧹 Erase
+            </button>
+          </div>
 
-        <div className="toolbar-divider" />
+          <div className="toolbar-divider" />
 
-        <div className="toolbar-group">
-          <span className="toolbar-label">Layer:</span>
-          <select value={layer} onChange={(e) => setLayer(e.target.value)}>
-            <option value="base">Base Tiles</option>
-            <option value="monsters">Monsters</option>
-            <option value="objects">Objects</option>
-            <option value="items">Items</option>
-          </select>
-        </div>
+          <div className="toolbar-group">
+            <span className="toolbar-label">Layer:</span>
+            <select value={layer} onChange={(e) => setLayer(e.target.value)}>
+              <option value="base">Base Tiles</option>
+              <option value="monsters">Monsters</option>
+              <option value="objects">Objects</option>
+              <option value="items">Items</option>
+            </select>
+          </div>
 
-        <div className="toolbar-group">
-          <span className="toolbar-label">Zoom:</span>
-          <input
-            type="range"
-            min="4"
-            max="32"
-            value={zoom}
-            onChange={(e) => setZoom(Number(e.target.value))}
-          />
-          <span>{zoom}px</span>
-        </div>
-
-        <div className="toolbar-group">
-          <label>
+          <div className="toolbar-group">
+            <span className="toolbar-label">Zoom:</span>
             <input
-              type="checkbox"
-              checked={showGrid}
-              onChange={(e) => setShowGrid(e.target.checked)}
+              type="range"
+              min="4"
+              max="32"
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
             />
-            Grid
-          </label>
-        </div>
-      </div>
+            <span>{zoom}px</span>
+          </div>
 
-      {/* Palette panels */}
-      <div className="dun-editor-palettes">
+          <div className="toolbar-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={showGrid}
+                onChange={(e) => setShowGrid(e.target.checked)}
+              />
+              Grid
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Palette panels - hidden in view-only mode */}
+      {!viewOnly && <div className="dun-editor-palettes">
         {tool === 'paint' && (
           <div className="palette-panel">
             <span className="palette-label">Tile:</span>
@@ -852,25 +856,28 @@ export function DUNEditor({ data, filename, onModify, onSave }) {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
+      {/* Info bar - simplified in view-only mode */}
       <div className="dun-editor-info">
         <span>Size: {dunData.width}×{dunData.height}</span>
-        {hoveredTile && (
+        {!viewOnly && hoveredTile && (
           <span>Pos: ({hoveredTile.x}, {hoveredTile.y}) Tile: {hoveredTile.tileId}</span>
         )}
-        {selectedTile && (
+        {!viewOnly && selectedTile && (
           <span className="selected-info">
             Selected: ({selectedTile.x}, {selectedTile.y}) = {selectedTile.tileId}
           </span>
         )}
-        <button
-          className="stats-toggle"
-          onClick={() => setShowStats(!showStats)}
-          title="Toggle level statistics"
-        >
-          {showStats ? '▼' : '▶'} Stats
-        </button>
+        {!viewOnly && (
+          <button
+            className="stats-toggle"
+            onClick={() => setShowStats(!showStats)}
+            title="Toggle level statistics"
+          >
+            {showStats ? '▼' : '▶'} Stats
+          </button>
+        )}
       </div>
 
       {/* Level Statistics Panel */}
