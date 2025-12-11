@@ -14,6 +14,7 @@ import create_fs from './fs';
 import load_game from './api/loader';
 import { SpawnSizes } from './api/load_spawn';
 import CompressMpq from './mpqcmp';
+import { diagnoseError, isWasmExportError } from './api/wasmErrorDiagnostic';
 
 // Neural Augmentation System
 import { AIConfigPanel, loadSavedConfig, needsConfiguration, providerManager, CampaignManager, CharacterCreator } from './neural';
@@ -1258,13 +1259,39 @@ class App extends React.Component {
         <CompressMpq api={this} ref={e => this.compressMpq = e}/>
       );
     } else if (error) {
+      const diagnosis = diagnoseError(error.message);
+      const isWasmError = isWasmExportError(error.message);
+
       return (
-        <Link className="error" href={reportLink(error, this.state.retail)}>
-          <p className="header">The following error has occurred:</p>
-          <p className="body">{error.message}</p>
-          <p className="footer">Click to create an issue on GitHub</p>
-          {error.save != null && <a href={error.save} download={this.saveName}>Download save file</a>}
-        </Link>
+        <div className="error-container">
+          <Link className="error" href={reportLink(error, this.state.retail)}>
+            <p className="header">The following error has occurred:</p>
+            <p className="body">{error.message}</p>
+            <p className="footer">Click to create an issue on GitHub</p>
+          </Link>
+          {diagnosis.diagnosed && (
+            <div className="error-diagnosis">
+              <p className="diagnosis-title">{diagnosis.title}</p>
+              <p className="diagnosis-cause"><strong>Cause:</strong> {diagnosis.cause}</p>
+              {diagnosis.solutions && diagnosis.solutions.length > 0 && (
+                <div className="diagnosis-solutions">
+                  <strong>How to fix:</strong>
+                  <ul>
+                    {diagnosis.solutions.map((solution, i) => (
+                      <li key={i}>{solution}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {isWasmError && (
+                <p className="diagnosis-note">
+                  This is a build configuration issue. The WASM needs to be rebuilt with the --custom-api flag.
+                </p>
+              )}
+            </div>
+          )}
+          {error.save != null && <a href={error.save} download={this.saveName} className="save-download">Download save file</a>}
+        </div>
       );
     } else if (loading && !started) {
       return (

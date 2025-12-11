@@ -185,6 +185,77 @@ body, #root, .App {
     }
   }
 
+  .error-container {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 90%;
+    max-height: 90%;
+    overflow-y: auto;
+    pointer-events: auto;
+  }
+
+  .error-diagnosis {
+    background: #200;
+    border: 1px solid #600;
+    border-top: none;
+    padding: 12px;
+    color: #faa;
+    font-size: 14px;
+    text-align: left;
+
+    .diagnosis-title {
+      font-weight: bold;
+      font-size: 1.1em;
+      color: #ff8;
+      margin-bottom: 8px;
+    }
+
+    .diagnosis-cause {
+      margin-bottom: 8px;
+      color: #fcc;
+    }
+
+    .diagnosis-solutions {
+      margin-bottom: 8px;
+
+      ul {
+        margin: 4px 0 0 20px;
+        padding: 0;
+
+        li {
+          margin: 4px 0;
+          color: #8f8;
+          font-family: monospace;
+          font-size: 12px;
+        }
+      }
+    }
+
+    .diagnosis-note {
+      margin-top: 10px;
+      padding: 8px;
+      background: #400;
+      border-radius: 4px;
+      color: #ff8;
+      font-style: italic;
+      font-size: 12px;
+    }
+  }
+
+  .save-download {
+    display: block;
+    margin-top: 8px;
+    color: #8af;
+    text-align: center;
+    font-size: 14px;
+
+    &:hover {
+      color: #adf;
+    }
+  }
+
   .loading {
     color: #888;
     font-size: 32px;
