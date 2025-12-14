@@ -51,6 +51,17 @@ jobs:
           # Fix for Node.js 17+ with older webpack (OpenSSL 3.0 compatibility)
           NODE_OPTIONS: --openssl-legacy-provider
 
+      - name: Verify build output
+        run: |
+          echo "=== Build folder contents ==="
+          ls -la ./build/
+          echo ""
+          echo "=== Static folder (if exists) ==="
+          ls -la ./build/static/ 2>/dev/null || echo "No static folder"
+          echo ""
+          echo "=== Index.html check ==="
+          head -5 ./build/index.html 2>/dev/null || echo "No index.html"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
